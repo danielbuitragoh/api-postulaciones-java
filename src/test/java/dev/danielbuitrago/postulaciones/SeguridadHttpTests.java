@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,27 @@ class SeguridadHttpTests extends PruebaIntegracion {
 	void conLaListaVaciaNingunOrigenQuedaPermitido() {
 		assertThat(new CorsConfig().corsConfigurationSource("").getCorsConfiguration(
 				new org.springframework.mock.web.MockHttpServletRequest("GET", "/postulaciones"))).isNull();
+	}
+
+	@Test
+	void unaPeticionSinTokenDa401ConProblemDetailYSinContarElMotivo() throws Exception {
+		mockMvc.perform(get("/postulaciones"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(header().string("WWW-Authenticate", "Bearer"))
+				.andExpect(header().string("Content-Type", "application/problem+json;charset=UTF-8"))
+				.andExpect(jsonPath("$.status").value(401))
+				.andExpect(jsonPath("$.title").value("No autorizado"));
+	}
+
+	@Test
+	void unTokenInvalidoDaLaMismaRespuestaQueNoTenerToken() throws Exception {
+		String sinToken = mockMvc.perform(get("/postulaciones")).andReturn().getResponse().getContentAsString();
+
+		String conBasura = mockMvc.perform(get("/postulaciones").header("Authorization", "Bearer esto.no.vale"))
+				.andExpect(status().isUnauthorized())
+				.andReturn().getResponse().getContentAsString();
+
+		assertThat(conBasura).isEqualTo(sinToken);
 	}
 
 	@Test

@@ -57,7 +57,7 @@ Cada uno de los tres matices tiene una prueba con datos construidos a mano. Comp
 | Login | Usuario inexistente y contraseña errónea dan la misma respuesta (comprobado con una prueba); el primero se compara contra un hash señuelo para igualar el coste. No he medido tiempos |
 | Límite de peticiones | Bucket4j por IP: 5 por minuto en `/auth/login`, 100 en el resto. Al pasarse, `429` con `Retry-After`. Los contadores viven en memoria |
 | Cabeceras y CORS | Cabeceras por defecto de Spring Security. CORS con lista blanca (`APP_CORS_ORIGENES`); un comodín impide arrancar la API |
-| Errores | `ProblemDetail` (RFC 9457); sin trazas ni nombres de clases hacia fuera |
+| Errores | `ProblemDetail` (RFC 9457) también en los 401 de los filtros de seguridad; sin trazas, nombres de clases ni el motivo exacto del rechazo de un token |
 
 ### Cómo sé que las pruebas de autorización sirven
 
@@ -98,7 +98,7 @@ Aquí se pusieron en rojo 6 pruebas y las otras 78 siguieron en verde. Dos son d
 ./mvnw verify
 ```
 
-84 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
+86 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
 
 ## Despliegue
 
@@ -118,7 +118,7 @@ Comparado leyendo el código de las dos versiones. Las cifras son líneas no vac
 | Tema | Node (TypeScript) | Java (Spring Boot) | Lo que vi al hacerlo |
 |---|---|---|---|
 | Tamaño | 14 archivos, 1.187 líneas (`src`, TS y SQL) | 51 clases, 1.730 líneas (`src/main`) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
-| Pruebas | 43 | 84 | Java incluye 15 de autenticación, 13 de autorización, 12 de empresas, 6 de cabeceras/CORS y 5 de límite de peticiones |
+| Pruebas | 43 | 86 | Java incluye 15 de autenticación, 13 de autorización, 12 de empresas, 8 de cabeceras, CORS y errores 401, y 5 de límite de peticiones |
 | Validación | zod | Bean Validation (anotaciones en los `record`) | Las anotaciones leen bien, pero la comprobación `salarioMin <= salarioMax` cruza dos campos y hubo que hacerla además en el servicio (la base también la tiene como `CHECK`) |
 | Acceso a datos | `pg` con SQL a mano | Spring Data JPA/Hibernate, y SQL a mano con `JdbcClient` para estadísticas | Hibernate con `ddl-auto=validate` detectó al arrancar que `hash_token` es `CHAR(64)` en la base y la entidad esperaba `varchar`. Las agregaciones (CTE, `bool_or`) en JPQL no tenían sentido |
 | Autorización en el `WHERE` | `... where id = $1 and usuario_id = $2` | `findByIdAndUsuarioId` y `@Query` con `usuarioId` | Igual de explícito en las `@Query`; en los métodos derivados el filtro queda escondido en el nombre del método, y por eso dependo más de las pruebas |

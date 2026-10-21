@@ -11,6 +11,8 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
+import dev.danielbuitrago.postulaciones.security.EntradaNoAutenticada;
+
 @Configuration
 public class SecurityConfig {
 
@@ -26,7 +28,10 @@ public class SecurityConfig {
 						.requestMatchers("/docs", "/docs/**", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
 								.permitAll()
 						.anyRequest().authenticated())
-				.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+				.oauth2ResourceServer(oauth2 -> oauth2
+						.jwt(Customizer.withDefaults())
+						.authenticationEntryPoint(new EntradaNoAutenticada()))
+				.exceptionHandling(errores -> errores.authenticationEntryPoint(new EntradaNoAutenticada()))
 				.httpBasic(AbstractHttpConfigurer::disable)
 				.formLogin(AbstractHttpConfigurer::disable);
 		return http.build();
