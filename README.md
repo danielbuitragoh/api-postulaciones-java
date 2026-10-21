@@ -1,12 +1,26 @@
 # api-postulaciones-java
 
-API para llevar el seguimiento de candidaturas de empleo, hecha con Java 21 y Spring Boot. Es la reescritura de [api-postulaciones](https://github.com/danielbuitragoh/api-postulaciones) (Node) para aprender el stack Java.
+[![CI](https://github.com/danielbuitragoh/api-postulaciones-java/actions/workflows/ci.yml/badge.svg)](https://github.com/danielbuitragoh/api-postulaciones-java/actions/workflows/ci.yml)
 
-> Estado: en construcción. Existen el esquema de base de datos, la autenticación, el CRUD de postulaciones con eventos, las estadísticas, el rate limiting y la documentación en `/docs`. Faltan el CI y el despliegue.
+API REST para llevar el seguimiento de candidaturas de empleo, con el historial de cada postulación como eventos y estadísticas de respuesta. Es la reescritura en Java 21 y Spring Boot de mi [api-postulaciones](https://github.com/danielbuitragoh/api-postulaciones) (Node), para aprender el stack Java.
 
-La documentación interactiva (Swagger UI) está en `http://localhost:8080/docs`: registra una cuenta, inicia sesión, pulsa **Authorize** con el `accessToken` y prueba el resto desde ahí.
+- **Demo:** _pendiente de desplegar_ · **Documentación interactiva:** `/docs` (Swagger UI) en la demo, o en `http://localhost:8080/docs` en local
+- **Aviso:** la demo corre en el plan gratuito de Render, que duerme el servicio tras un rato sin tráfico: la primera petición puede tardar ~40 s.
+- **Arrancar en local** (necesita Docker): `cp .env.example .env`, rellena `JWT_SECRET` en `.env` y ejecuta:
 
-## Endpoints disponibles
+```bash
+docker compose up --build
+```
+
+**Stack:** Java 21 · Spring Boot 4.1 · Spring Data JPA · Spring Security · Flyway · PostgreSQL 16 · springdoc-openapi · Bucket4j · Testcontainers · Docker · GitHub Actions
+
+---
+
+## La decisión de diseño: el estado no es una columna
+
+El estado de una postulación **no se sobrescribe**. Cada cambio es una fila en `eventos` (`postulada`, `respuesta`, `entrevista`, `oferta`, `rechazo`, `seguimiento`, `cerrada`) y el estado actual sale de una vista (`estado_actual`, con `DISTINCT ON`): el tipo del evento más reciente **en el tiempo**, no el último insertado. Sobrescribir pierde el "cuándo", y sin el cuándo no se puede responder "cuánto tardan de media en contestarme".
+
+## Endpoints
 
 | Método | Ruta | Qué hace |
 |---|---|---|
@@ -14,25 +28,36 @@ La documentación interactiva (Swagger UI) está en `http://localhost:8080/docs`
 | GET | `/postulaciones?estado=&empresa=&pagina=&orden=` | Lista paginada (20 por página, la primera es la 0). `orden`: `reciente` (por defecto), `antigua` o `empresa` |
 | POST | `/postulaciones` | Crea una postulación (y su evento `postulada`) |
 | GET, PATCH, DELETE | `/postulaciones/{id}` | Detalle con eventos, cambios parciales y borrado |
-| POST | `/postulaciones/{id}/eventos` | Añade un evento (`postulada`, `respuesta`, `entrevista`, `oferta`, `rechazo`, `seguimiento`, `cerrada`) |
-| GET | `/estadisticas` | Embudo y tiempo hasta la primera respuesta (ver abajo) |
+| POST | `/postulaciones/{id}/eventos` | Añade un evento |
+| GET | `/estadisticas` | Embudo y tiempo hasta la primera respuesta |
 | GET | `/salud` | Estado del servicio |
 | GET | `/docs` | Swagger UI |
 
-El estado de una postulación no es una columna: es el tipo de su evento más reciente en el tiempo (vista `estado_actual`).
-
-## Estadísticas: qué cuenta y qué no
+### Estadísticas: qué cuenta y qué no
 
 - **Respuesta de la empresa** es un evento `respuesta`, `entrevista`, `oferta` o `rechazo`. `seguimiento` y `cerrada` los pone el usuario y no cuentan.
 - **Tiempo de respuesta:** días desde `postulado_en` hasta la **primera** respuesta, no la última.
 - **Sin respuesta:** las postulaciones que nunca contestaron no cuentan como 0 días; salen aparte (`sinRespuesta`) y la media usa solo las que respondieron.
-- **Embudo** (postuladas → respondieron → entrevista → oferta): cuenta postulaciones en las que el paso ocurrió alguna vez, sin mirar el estado actual. Una postulación que pasó por entrevista y terminó en rechazo cuenta en "entrevista". Los escalones no se fuerzan a ser decrecientes: si alguien registra una oferta sin entrevista, sale tal cual.
+- **Embudo** (postuladas → respondieron → entrevista → oferta): cuenta postulaciones en las que el paso ocurrió alguna vez, sin mirar el estado actual. Una que pasó por entrevista y terminó en rechazo cuenta en "entrevista". Los escalones no se fuerzan a ser decrecientes.
 
-## Límite de peticiones
+Cada uno de los tres matices tiene una prueba con datos construidos a mano. Comprobé que la del primero se pone en rojo si cambio `MIN` por `MAX` en la consulta (devuelve `20.0` en lugar de `2.0`).
 
-Por IP y por minuto: 5 en `POST /auth/login` y 100 en el resto (no se limitan `/salud` ni la documentación). Al pasarse, la API responde `429` con la cabecera `Retry-After`. Los contadores viven en memoria y se vacían al reiniciar la API.
+## Seguridad
 
-## Cómo sé que las pruebas de autorización sirven
+| Qué | Cómo |
+|---|---|
+| Contraseñas | Argon2id (19 MiB, 2 iteraciones, 1 hilo). Una prueba lee el hash de la base y comprueba esos parámetros |
+| Sesión | JWT de acceso de 15 min (HS256, algoritmo fijado al verificar) + refresh token opaco de 7 días, guardado como SHA-256 y rotado en cada uso |
+| Refresh reutilizado | Si llega uno ya rotado, se revocan todos los tokens del usuario. Una prueba lo comprueba contra la base real |
+| Validación | Bean Validation en todos los DTOs de entrada, antes de tocar la base |
+| SQL | Solo consultas parametrizadas; el `ORDER BY` sale de una lista blanca, nunca del cliente |
+| Autorización | `usuario_id` va en el `WHERE` de cada consulta. Un recurso ajeno responde 404, igual que uno inexistente |
+| Login | Usuario inexistente y contraseña errónea dan la misma respuesta (comprobado con una prueba); el primero se compara contra un hash señuelo para igualar el coste. No he medido tiempos |
+| Límite de peticiones | Bucket4j por IP: 5 por minuto en `/auth/login`, 100 en el resto. Al pasarse, `429` con `Retry-After`. Los contadores viven en memoria |
+| Cabeceras y CORS | Cabeceras por defecto de Spring Security. CORS con lista blanca (`APP_CORS_ORIGENES`); un comodín impide arrancar la API |
+| Errores | `ProblemDetail` (RFC 9457); sin trazas ni nombres de clases hacia fuera |
+
+### Cómo sé que las pruebas de autorización sirven
 
 La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé:
 
@@ -54,29 +79,61 @@ Se pusieron en rojo 4 pruebas, todas de `AutorizacionTests`, y las otras 39 sigu
 
 Matiz: la cuarta prueba fallida (`unPatchNoPuedeCambiarElDuenoNiLaEmpresa`) cae en su última comprobación, que mira que B no pueda ver la postulación de A; es una consecuencia del filtro quitado en `buscarResumen`, no un fallo de `PATCH`.
 
-## Arrancar en local
-
-Requiere Docker.
-
-```bash
-cp .env.example .env
-# Rellena JWT_SECRET en .env (instrucciones dentro del archivo)
-docker compose up --build
-```
-
-La API queda en `http://localhost:8080/salud`.
-
 ## Pruebas
 
 ```bash
 ./mvnw verify
 ```
 
-Las pruebas usan Testcontainers con PostgreSQL 16 real, así que necesitan Docker en marcha.
+65 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
 
-## Stack
+## Despliegue
 
-Java 21 · Spring Boot 4.1 · Spring Data JPA · Spring Security · Flyway · PostgreSQL 16 · springdoc-openapi · Bucket4j · Testcontainers · Docker
+API en [Render](https://render.com) (plan gratuito, imagen Docker, ver `render.yaml`) y base de datos en [Neon](https://neon.com) (plan gratuito). Variables de entorno de la API:
+
+| Variable | Qué es |
+|---|---|
+| `DB_URL` | `jdbc:postgresql://<host>/<base>?sslmode=require` (host directo de Neon, no el `-pooler`) |
+| `DB_USER`, `DB_PASSWORD` | Usuario y contraseña de la base |
+| `JWT_SECRET` | Secreto de firma, de al menos 32 bytes. Render lo genera solo (`generateValue` en `render.yaml`) |
+| `APP_CORS_ORIGENES` | Opcional: orígenes de navegador permitidos, separados por comas |
+
+## Misma API en Node y en Java: qué cambió
+
+Comparado leyendo el código de las dos versiones. Las cifras son líneas no vacías (incluyen comentarios) y no son del todo comparables: la versión Java tiene además Swagger, CORS y rate limiting propios.
+
+| Tema | Node (TypeScript) | Java (Spring Boot) | Lo que vi al hacerlo |
+|---|---|---|---|
+| Tamaño | 14 archivos, 1.187 líneas (`src`, TS y SQL) | 46 clases, 1.503 líneas (`src/main`) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
+| Pruebas | 43 | 65 | Java incluye 15 de autenticación, 9 de autorización, 6 de cabeceras/CORS y 5 de límite de peticiones |
+| Validación | zod | Bean Validation (anotaciones en los `record`) | Las anotaciones leen bien, pero la comprobación `salarioMin <= salarioMax` cruza dos campos y hubo que hacerla además en el servicio (la base también la tiene como `CHECK`) |
+| Acceso a datos | `pg` con SQL a mano | Spring Data JPA/Hibernate, y SQL a mano con `JdbcClient` para estadísticas | Hibernate con `ddl-auto=validate` detectó al arrancar que `hash_token` es `CHAR(64)` en la base y la entidad esperaba `varchar`. Las agregaciones (CTE, `bool_or`) en JPQL no tenían sentido |
+| Autorización en el `WHERE` | `... where id = $1 and usuario_id = $2` | `findByIdAndUsuarioId` y `@Query` con `usuarioId` | Igual de explícito en las `@Query`; en los métodos derivados el filtro queda escondido en el nombre del método, y por eso dependo más de las pruebas |
+| Transacciones | no comparado | `@Transactional` deshace todo si hay excepción | Al detectar un refresh reutilizado hay que revocar y a la vez lanzar un 401: sin `noRollbackFor` la revocación se perdía. Una prueba sin transacción propia lo detecta |
+| JWT | `jsonwebtoken` con `algorithms: ['HS256']` | `NimbusJwtDecoder` con `macAlgorithm(HS256)` | Mismo resultado: la lista de algoritmos es explícita y `alg: none` se rechaza (hay prueba) |
+| Cabeceras, CORS, límite | `helmet`, `cors`, `express-rate-limit` | Cabeceras por defecto de Spring Security, un bean de CORS y un filtro propio con Bucket4j | Spring no trae limitador de peticiones: es un filtro propio de unas 70 líneas más Caffeine para olvidar IPs |
+| Estadísticas | 4 consultas en paralelo | 1 consulta con CTE | Java devuelve menos que Node (ver abajo) |
+| Arranque del proyecto | `npm install` | JDK 21, Docker para las pruebas, y verificar versiones | Spring Boot 4 trae Jackson 3 y paquetes de prueba movidos; el id `.RELEASE` que devuelve Initializr no existe en Maven Central (la versión es `4.1.1`) |
+
+### Diferencias de modelo y de funcionalidad con la versión Node
+
+Esta API **no es una copia exacta** de la de Node. El diseño de Java partió de un esquema más pequeño y hay diferencias que conviene conocer:
+
+- **Empresas:** en Node son por usuario (`usuario_id`, nombre único por usuario) y tienen sus propios endpoints (`GET/POST /empresas`, `DELETE /empresas/{id}`). En Java son **compartidas** entre usuarios, no hay endpoints de empresas (se crean al crear una postulación, reutilizando el nombre) y nada impide duplicados salvo la búsqueda sin distinguir mayúsculas.
+- **Identificadores:** UUID en Node, `BIGINT` autogenerado en Java.
+- **Tipos de evento:** Node usa `guardada, postulada, respuesta, entrevista, prueba, oferta, rechazo, retirada`. Java usa `postulada, respuesta, entrevista, oferta, rechazo, seguimiento, cerrada`.
+- **Columnas que Java no tiene:** `usuarios.nombre`, `postulaciones.modalidad`, `ubicacion` y `notas`.
+- **Estadísticas:** Node además devuelve estado por postulación, postulaciones por mes, mediana de días, rechazos en el embudo y tasas de entrevista y oferta. Java devuelve el embudo (postuladas, respondieron, entrevista, oferta) y la media, con los tres matices descritos arriba.
+
+## Trabajo futuro
+
+- Empresas por usuario y sus endpoints, para igualar el modelo de Node.
+- Mediana de días de respuesta, tasas del embudo y desglose por mes.
+- `PATCH` no permite dejar un campo vacío: un campo ausente significa "no tocar".
+- Los contadores del límite de peticiones están en memoria: con más de una instancia cada una contaría por su cuenta (haría falta Redis o la base de datos).
+- Los refresh tokens caducados o revocados no se borran de la tabla.
+- Sin verificación de email ni recuperación de contraseña.
+- Sin pruebas de carga ni medición de tiempos del login.
 
 ## Licencia
 
