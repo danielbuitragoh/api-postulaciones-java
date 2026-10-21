@@ -1,0 +1,19 @@
+# Blueprint de Render: la API como servicio web con Docker en el plan gratuito.
+# La base de datos es Neon (fuera de Render); sus datos de conexión se rellenan a mano en el
+# panel de Render, por eso van con "sync: false": el valor no está en el repositorio.
+services:
+  - type: web
+    name: api-postulaciones-java
+    runtime: docker
+    plan: free
+    healthCheckPath: /salud
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # Render genera un valor aleatorio la primera vez; no hay que inventar ni copiar nada.
+      - key: JWT_SECRET
+        generateValue: true

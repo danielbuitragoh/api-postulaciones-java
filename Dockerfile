@@ -14,4 +14,5 @@ RUN useradd --system --no-create-home api
 COPY --from=build /app/target/*.jar app.jar
 USER api
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# El plan gratuito de Render da 512 MB: se limita la memoria de la JVM a un porcentaje de la del contenedor.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
