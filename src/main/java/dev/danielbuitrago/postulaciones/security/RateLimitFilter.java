@@ -45,11 +45,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
 	private final int loginPorMinuto;
 	private final int generalPorMinuto;
+	private final String cabeceraIpReal;
 
 	public RateLimitFilter(@Value("${app.rate-limit.login-por-minuto:5}") int loginPorMinuto,
-			@Value("${app.rate-limit.general-por-minuto:100}") int generalPorMinuto) {
+			@Value("${app.rate-limit.general-por-minuto:100}") int generalPorMinuto,
+			@Value("${app.rate-limit.cabecera-ip-real:}") String cabeceraIpReal) {
 		this.loginPorMinuto = loginPorMinuto;
 		this.generalPorMinuto = generalPorMinuto;
+		this.cabeceraIpReal = cabeceraIpReal.trim();
 	}
 
 	@Override
@@ -63,7 +66,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
 		boolean esLogin = ruta.equals("/auth/login");
 		int limite = esLogin ? loginPorMinuto : generalPorMinuto;
-		String clave = (esLogin ? "login:" : "general:") + request.getRemoteAddr();
+		String clave = (esLogin ? "login:" : "general:") + ipDelCliente(request);
 		Bucket cubo = cubos.get(clave, k -> nuevoCubo(limite));
 
 		ConsumptionProbe sonda = cubo.tryConsumeAndReturnRemaining(1);
@@ -78,6 +81,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
 		response.setContentType("application/problem+json");
 		response.setCharacterEncoding("UTF-8");
 		response.getWriter().write(CUERPO_429);
+	}
+
+	// Por defecto, la IP de la conexión. Detrás de proxies esa IP es la del proxy y, además, puede
+	// cambiar en cada petición, con lo que cada una caería en un cubo distinto y el límite no
+	// serviría. Si se configura una cabecera (en Render, "CF-Connecting-IP"), se usa su valor.
+	// Esa cabecera solo es de fiar si el proxy de delante la sobrescribe en cada petición, y eso
+	// hay que comprobarlo con pruebas contra el despliegue real (ver README).
+	private String ipDelCliente(HttpServletRequest request) {
+		if (!cabeceraIpReal.isEmpty()) {
+			String valor = request.getHeader(cabeceraIpReal);
+			// El tope de longitud evita que una cabecera enorme llene la memoria con claves largas.
+			if (valor != null && !valor.isBlank() && valor.length() <= 64) {
+				return valor.trim();
+			}
+		}
+		return request.getRemoteAddr();
 	}
 
 	private static Bucket nuevoCubo(int porMinuto) {

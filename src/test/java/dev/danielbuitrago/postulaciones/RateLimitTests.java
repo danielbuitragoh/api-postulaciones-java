@@ -17,7 +17,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // Cada prueba usa su propia IP, así que no se pisan entre sí.
 @TestPropertySource(properties = {
 		"app.rate-limit.login-por-minuto=3",
-		"app.rate-limit.general-por-minuto=5" })
+		"app.rate-limit.general-por-minuto=5",
+		"app.rate-limit.cabecera-ip-real=X-Cliente-Real" })
 class RateLimitTests extends PruebaIntegracion {
 
 	@Autowired
@@ -66,6 +67,42 @@ class RateLimitTests extends PruebaIntegracion {
 		mockMvc.perform(desde(get("/postulaciones"), ip)).andExpect(status().isTooManyRequests());
 	}
 
+	// ---------- cabecera con la IP real (detrás de un proxy) ----------
+
+	@Test
+	void conLaCabeceraConfiguradaElCupoEsPorValorDeCabeceraNoPorIpDeConexion() throws Exception {
+		// Tres logins con la misma cabecera pero desde conexiones distintas (como si el proxy
+		// cambiara de IP en cada petición): comparten cupo, así que el cuarto da 429.
+		for (int i = 0; i < 3; i++) {
+			mockMvc.perform(conCabecera(loginDesde("10.1.0." + i), "198.51.100.1")).andExpect(status().isUnauthorized());
+		}
+
+		mockMvc.perform(conCabecera(loginDesde("10.1.0.99"), "198.51.100.1")).andExpect(status().isTooManyRequests());
+	}
+
+	@Test
+	void otroValorDeCabeceraTieneSuPropioCupoAunqueLaConexionSeaLaMisma() throws Exception {
+		String conexion = "10.2.0.1";
+		for (int i = 0; i < 3; i++) {
+			mockMvc.perform(conCabecera(loginDesde(conexion), "198.51.100.2")).andExpect(status().isUnauthorized());
+		}
+		mockMvc.perform(conCabecera(loginDesde(conexion), "198.51.100.2")).andExpect(status().isTooManyRequests());
+
+		mockMvc.perform(conCabecera(loginDesde(conexion), "198.51.100.3")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void unaCabeceraDemasiadoLargaSeIgnoraYSeUsaLaIpDeConexion() throws Exception {
+		String conexion = "10.3.0.1";
+
+		// Cada petición trae una cabecera larga distinta: si se usara, nunca se agotaría el cupo.
+		for (int i = 0; i < 3; i++) {
+			mockMvc.perform(conCabecera(loginDesde(conexion), "x".repeat(100) + i)).andExpect(status().isUnauthorized());
+		}
+
+		mockMvc.perform(conCabecera(loginDesde(conexion), "x".repeat(100) + "9")).andExpect(status().isTooManyRequests());
+	}
+
 	@Test
 	void saludNoSeLimita() throws Exception {
 		String ip = "203.0.113.50";
@@ -85,6 +122,10 @@ class RateLimitTests extends PruebaIntegracion {
 	private static MockHttpServletRequestBuilder loginDesde(String ip) {
 		return desde(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"email\":\"nadie@example.com\",\"password\":\"cualquiera-123\"}"), ip);
+	}
+
+	private static MockHttpServletRequestBuilder conCabecera(MockHttpServletRequestBuilder peticion, String valor) {
+		return peticion.header("X-Cliente-Real", valor);
 	}
 
 	private static MockHttpServletRequestBuilder desde(MockHttpServletRequestBuilder peticion, String ip) {
