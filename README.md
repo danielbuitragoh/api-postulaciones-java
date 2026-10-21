@@ -100,6 +100,15 @@ Aquí se pusieron en rojo 6 pruebas y las otras 78 siguieron en verde. Dos son d
 
 86 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
 
+## Script auxiliar
+
+`scripts/informe.py` es un script pequeño de Python (solo biblioteca estándar, sin dependencias) que llama a `/estadisticas` y muestra un informe legible en la terminal. No es un proyecto en Python: es una comodidad para mirar mis cifras sin abrir Swagger.
+
+```bash
+export API_TOKEN="el-accessToken-del-login"   # en PowerShell: $env:API_TOKEN = "..."
+python scripts/informe.py                     # opcional: API_URL, por defecto http://localhost:8080
+```
+
 ## Despliegue
 
 API en [Render](https://render.com) (plan gratuito, imagen Docker, ver `render.yaml`) y base de datos en [Neon](https://neon.com) (plan gratuito). Variables de entorno de la API:
