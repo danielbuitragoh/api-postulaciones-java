@@ -4,7 +4,7 @@
 
 API REST para llevar el seguimiento de candidaturas de empleo, con el historial de cada postulación como eventos y estadísticas de respuesta. Es la reescritura en Java 21 y Spring Boot de mi [api-postulaciones](https://github.com/danielbuitragoh/api-postulaciones) (Node), para aprender el stack Java.
 
-- **Demo:** _pendiente de desplegar_ · **Documentación interactiva:** `/docs` (Swagger UI) en la demo, o en `http://localhost:8080/docs` en local
+- **Demo:** [api-postulaciones-java.onrender.com](https://api-postulaciones-java.onrender.com/salud) · **Documentación interactiva (Swagger UI):** [/docs](https://api-postulaciones-java.onrender.com/docs), o `http://localhost:8080/docs` en local
 - **Probarla sin instalar nada:** no hace falta una cuenta previa. En `/docs` abre `POST /auth/registro` con cualquier email (ficticio) y una contraseña de 8 caracteres o más, inicia sesión con `POST /auth/login`, pulsa **Authorize** con el `accessToken` y ya puedes crear postulaciones, añadir eventos y ver `/estadisticas`.
 - **Aviso:** la demo corre en el plan gratuito de Render, que duerme el servicio tras un rato sin tráfico: la primera petición puede tardar ~40 s.
 - **Arrancar en local** (necesita Docker): `cp .env.example .env`, rellena `JWT_SECRET` en `.env` y ejecuta:
@@ -56,7 +56,7 @@ Cada uno de los tres matices tiene una prueba con datos construidos a mano. Comp
 | SQL | Solo consultas parametrizadas; el `ORDER BY` sale de una lista blanca, nunca del cliente |
 | Autorización | `usuario_id` va en el `WHERE` de cada consulta. Un recurso ajeno responde 404, igual que uno inexistente |
 | Login | Usuario inexistente y contraseña errónea dan la misma respuesta (comprobado con una prueba); el primero se compara contra un hash señuelo para igualar el coste. No he medido tiempos |
-| Límite de peticiones | Bucket4j por IP: 5 por minuto en `/auth/login`, 100 en el resto. Al pasarse, `429` con `Retry-After`. Los contadores viven en memoria |
+| Límite de peticiones | Bucket4j por IP: 5 por minuto en `/auth/login`, 100 en el resto. Al pasarse, `429` con `Retry-After`. Los contadores viven en memoria. En la demo la IP se lee de `CF-Connecting-IP` (ver "Despliegue") |
 | Cabeceras y CORS | Cabeceras por defecto de Spring Security. CORS con lista blanca (`APP_CORS_ORIGENES`); un comodín impide arrancar la API |
 | Errores | `ProblemDetail` (RFC 9457) también en los 401 de los filtros de seguridad; sin trazas, nombres de clases ni el motivo exacto del rechazo de un token |
 
@@ -120,6 +120,22 @@ API en [Render](https://render.com) (plan gratuito, imagen Docker, ver `render.y
 | `DB_USER`, `DB_PASSWORD` | Usuario y contraseña de la base |
 | `JWT_SECRET` | Secreto de firma, de al menos 32 bytes. Render lo genera solo (`generateValue` en `render.yaml`) |
 | `APP_CORS_ORIGENES` | Opcional: orígenes de navegador permitidos, separados por comas |
+| `APP_RATE_LIMIT_CABECERA_IP_REAL` | Cabecera de la que se lee la IP del cliente para el límite de peticiones. En `render.yaml` vale `CF-Connecting-IP`. Vacía en local |
+
+### La IP del cliente detrás de Render (un fallo real que apareció al desplegar)
+
+Al desplegar, el límite de login **no funcionaba**: 9 intentos seguidos desde la misma IP daban 9 `401` y ningún `429`, mientras que en local y en la CI sí funcionaba. Detrás de Cloudflare y del proxy de Render, la IP que ve la API como origen de la conexión no es la del cliente y cambia entre peticiones, así que cada petición caía en un cubo distinto. Leer `X-Forwarded-For` no es una solución: Render añade entradas a esa cabecera en lugar de reemplazarla, y un cliente puede inventarse las primeras.
+
+La solución fue leer la IP de `CF-Connecting-IP`, que fija Cloudflare, y hacerlo opcional por configuración. Render no documenta ese comportamiento, así que lo comprobé contra la demo desplegada (cada serie son peticiones a `POST /auth/login` con credenciales falsas, esperando un minuto entre series para que se rellene el cupo):
+
+```
+Sin cabeceras propias (control):                    401,401,401,401,401,429,429,429,429
+X-Forwarded-For distinto en cada petición:          401,401,401,401,401,429,429,429,429
+CF-Connecting-IP puesta por el cliente:             403,403,403,403
+GET /salud (sin límite):                            200,200,200,200
+```
+
+Cinco intentos y luego `429`, también cuando el cliente falsea `X-Forwarded-For`; y si el cliente manda su propio `CF-Connecting-IP`, Cloudflare rechaza la petición con `403`, así que esa cabecera no se puede falsear desde fuera. Lo que **no he podido comprobar** es que dos clientes con IP distinta tengan cupos separados (necesitaría pedirlo desde dos redes diferentes), y depende de que Render siga delante de Cloudflare: si algún día cambia, habría que volver a verificarlo.
 
 ## Misma API en Node y en Java: qué cambió
 
