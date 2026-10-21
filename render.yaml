@@ -6,6 +6,9 @@ services:
     name: api-postulaciones-java
     runtime: docker
     plan: free
+    # Misma región que la base de datos de Neon (AWS Fráncfort): sin esto Render usa Oregón y
+    # cada consulta cruzaría el Atlántico.
+    region: frankfurt
     healthCheckPath: /salud
     envVars:
       - key: DB_URL
