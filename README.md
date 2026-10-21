@@ -2,7 +2,42 @@
 
 API para llevar el seguimiento de candidaturas de empleo, hecha con Java 21 y Spring Boot. Es la reescritura de [api-postulaciones](https://github.com/danielbuitragoh/api-postulaciones) (Node) para aprender el stack Java.
 
-> Estado: en construcción. De momento existen el esquema de base de datos, `/salud` y la autenticación (`/auth/registro`, `/auth/login`, `/auth/refresh`).
+> Estado: en construcción. Existen el esquema de base de datos, `/salud`, la autenticación y el CRUD de postulaciones con eventos. Faltan las estadísticas, el rate limiting y la documentación en `/docs`.
+
+## Endpoints disponibles
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| POST | `/auth/registro`, `/auth/login`, `/auth/refresh` | Cuenta, sesión y rotación del refresh token |
+| GET | `/postulaciones?estado=&empresa=&pagina=&orden=` | Lista paginada (20 por página, la primera es la 0). `orden`: `reciente` (por defecto), `antigua` o `empresa` |
+| POST | `/postulaciones` | Crea una postulación (y su evento `postulada`) |
+| GET, PATCH, DELETE | `/postulaciones/{id}` | Detalle con eventos, cambios parciales y borrado |
+| POST | `/postulaciones/{id}/eventos` | Añade un evento (`postulada`, `respuesta`, `entrevista`, `oferta`, `rechazo`, `seguimiento`, `cerrada`) |
+| GET | `/salud` | Estado del servicio |
+
+El estado de una postulación no es una columna: es el tipo de su evento más reciente en el tiempo (vista `estado_actual`).
+
+## Cómo sé que las pruebas de autorización sirven
+
+La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé:
+
+1. Con todo correcto, `./mvnw verify` da 43 pruebas en verde.
+2. Neutralicé a propósito el filtro de usuario en dos consultas de `PostulacionRepository`: `buscarResumen` (detalle) y `borrar`. Cambié `p.usuarioId = :usuarioId` por `(p.usuarioId = :usuarioId or true)`, que equivale a quitarlo sin tocar las firmas.
+3. Resultado real de `./mvnw verify`:
+
+```
+[ERROR] Tests run: 9, Failures: 4, Errors: 0, Skipped: 0 -- in AutorizacionTests
+[ERROR]   AutorizacionTests.bNoPuedeBorrarLaPostulacionDeA:53 Status expected:<404> but was:<204>
+[ERROR]   AutorizacionTests.bNoPuedeVerLaPostulacionDeA:31 Status expected:<404> but was:<200>
+[ERROR]   AutorizacionTests.unPatchNoPuedeCambiarElDuenoNiLaEmpresa:149 Status expected:<404> but was:<200>
+[ERROR]   AutorizacionTests.unRecursoAjenoYUnoInexistenteSonIndistinguibles:109 Status expected:<404> but was:<200>
+[ERROR] Tests run: 43, Failures: 4, Errors: 0, Skipped: 0
+```
+
+Se pusieron en rojo 4 pruebas, todas de `AutorizacionTests`, y las otras 39 siguieron en verde. Con `borrar` sin filtro, un usuario llegaba a borrar la postulación de otro (`204` en lugar de `404`). Lo que no se tocó (modificar, añadir eventos, listado y filtros) siguió pasando porque esas consultas conservaban su filtro.
+4. Restauré las dos consultas y `./mvnw verify` volvió a dar `BUILD SUCCESS`.
+
+Matiz: la cuarta prueba fallida (`unPatchNoPuedeCambiarElDuenoNiLaEmpresa`) cae en su última comprobación, que mira que B no pueda ver la postulación de A; es una consecuencia del filtro quitado en `buscarResumen`, no un fallo de `PATCH`.
 
 ## Arrancar en local
 
