@@ -2,7 +2,7 @@
 
 API para llevar el seguimiento de candidaturas de empleo, hecha con Java 21 y Spring Boot. Es la reescritura de [api-postulaciones](https://github.com/danielbuitragoh/api-postulaciones) (Node) para aprender el stack Java.
 
-> Estado: en construcción. De momento solo existen el esquema de base de datos y `/salud`.
+> Estado: en construcción. De momento existen el esquema de base de datos, `/salud` y la autenticación (`/auth/registro`, `/auth/login`, `/auth/refresh`).
 
 ## Arrancar en local
 
@@ -10,6 +10,7 @@ Requiere Docker.
 
 ```bash
 cp .env.example .env
+# Rellena JWT_SECRET en .env (instrucciones dentro del archivo)
 docker compose up --build
 ```
 
