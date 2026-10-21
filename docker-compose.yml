@@ -22,6 +22,7 @@ services:
       DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-postulaciones}
       DB_USER: ${DB_USER:-postulaciones}
       DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Rellena JWT_SECRET en .env (mira .env.example)}
     ports:
       - "8080:8080"
 
