@@ -19,7 +19,8 @@ import org.springframework.test.context.TestPropertySource;
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
 		"app.rate-limit.login-por-minuto=100000",
-		"app.rate-limit.general-por-minuto=100000" })
+		"app.rate-limit.general-por-minuto=100000",
+		"app.cors.origenes=https://app.ejemplo.com" })
 abstract class PruebaIntegracion {
 
 	// Secreto aleatorio por ejecución: no hay ninguna clave escrita en el repositorio.
