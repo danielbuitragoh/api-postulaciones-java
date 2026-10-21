@@ -21,6 +21,8 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/salud", "/salud/**").permitAll()
 						.requestMatchers("/auth/**").permitAll()
+						.requestMatchers("/docs", "/docs/**", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
+								.permitAll()
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
 				.httpBasic(AbstractHttpConfigurer::disable)
