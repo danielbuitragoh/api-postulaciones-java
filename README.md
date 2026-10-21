@@ -5,6 +5,7 @@
 API REST para llevar el seguimiento de candidaturas de empleo, con el historial de cada postulación como eventos y estadísticas de respuesta. Es la reescritura en Java 21 y Spring Boot de mi [api-postulaciones](https://github.com/danielbuitragoh/api-postulaciones) (Node), para aprender el stack Java.
 
 - **Demo:** _pendiente de desplegar_ · **Documentación interactiva:** `/docs` (Swagger UI) en la demo, o en `http://localhost:8080/docs` en local
+- **Probarla sin instalar nada:** no hace falta una cuenta previa. En `/docs` abre `POST /auth/registro` con cualquier email (ficticio) y una contraseña de 8 caracteres o más, inicia sesión con `POST /auth/login`, pulsa **Authorize** con el `accessToken` y ya puedes crear postulaciones, añadir eventos y ver `/estadisticas`.
 - **Aviso:** la demo corre en el plan gratuito de Render, que duerme el servicio tras un rato sin tráfico: la primera petición puede tardar ~40 s.
 - **Arrancar en local** (necesita Docker): `cp .env.example .env`, rellena `JWT_SECRET` en `.env` y ejecuta:
 
@@ -151,6 +152,13 @@ Esta API **no es una copia exacta** de la de Node. Las empresas, que son por usu
 - **Tipos de evento:** Node usa `guardada, postulada, respuesta, entrevista, prueba, oferta, rechazo, retirada`. Java usa `postulada, respuesta, entrevista, oferta, rechazo, seguimiento, cerrada`.
 - **Columnas que Java no tiene:** `usuarios.nombre`, `postulaciones.modalidad`, `ubicacion` y `notas`.
 - **Estadísticas:** Node además devuelve estado por postulación, postulaciones por mes, mediana de días, rechazos en el embudo y tasas de entrevista y oferta. Java devuelve el embudo (postuladas, respondieron, entrevista, oferta) y la media, con los tres matices descritos arriba.
+
+## Problemas reales que aparecieron y cómo se resolvieron
+
+- **Una revocación que se perdía:** al detectar un refresh token reutilizado se revocan los del usuario y luego se lanza un 401, pero una excepción deshace la transacción y la revocación se perdía justo en ese caso. Se arregló con `noRollbackFor`. Para comprobar que la prueba lo detecta quité esa línea: la prueba se puso en rojo (devolvía `200` en lugar de `401`).
+- **Esquema y entidad que no coincidían:** Hibernate, con `ddl-auto=validate`, se negó a arrancar porque `hash_token` era `CHAR(64)` en la base y la entidad esperaba `varchar`. Se corrigió la entidad, no la migración.
+- **Un permiso que solo falla en Linux:** `mvnw` quedó guardado en git sin permiso de ejecución. En Windows no se nota, pero habría roto la CI y el despliegue en Render. Se corrigió en el índice de git, y la CI construye ahora también la imagen Docker.
+- **Pruebas que no probaban nada:** quitando a propósito el filtro de usuario de varias consultas se vio qué pruebas lo detectaban (ver el experimento arriba). En el de las empresas, además, el listado sin filtro devolvía las empresas de todos los usuarios.
 
 ## Trabajo futuro
 

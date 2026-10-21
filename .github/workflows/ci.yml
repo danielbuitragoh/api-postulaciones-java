@@ -20,3 +20,8 @@ jobs:
       # No hace falta ningún secreto: las pruebas generan su propio JWT_SECRET aleatorio.
       - name: Compilar y ejecutar las pruebas
         run: ./mvnw -B verify
+
+      # Render despliega construyendo el Dockerfile, no el jar de arriba: se comprueba que esa
+      # imagen también se construye (en Linux, con los permisos de git, como en Render).
+      - name: Construir la imagen Docker
+        run: docker build -t api-postulaciones-java .
