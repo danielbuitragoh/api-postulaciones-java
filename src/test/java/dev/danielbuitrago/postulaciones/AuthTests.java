@@ -234,11 +234,11 @@ class AuthTests extends PruebaIntegracion {
 	void unJwtValidoPasaElFiltroDeSeguridad() throws Exception {
 		String acceso = campo(registrarYEntrar(), "accessToken");
 
-		// Todavía no hay controlador de postulaciones (fase 3): basta con que no sea 401.
+		// Con un token válido la petición llega al controlador y responde 200.
 		int estado = mockMvc.perform(get("/postulaciones").header("Authorization", "Bearer " + acceso))
 				.andReturn().getResponse().getStatus();
 
-		assertThat(estado).isNotEqualTo(401);
+		assertThat(estado).isEqualTo(200);
 	}
 
 	// ---------- ayudas ----------
