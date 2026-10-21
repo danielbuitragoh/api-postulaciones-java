@@ -75,6 +75,11 @@ public class GestorDeErrores extends ResponseEntityExceptionHandler {
 		return problema(HttpStatus.UNAUTHORIZED, "No autorizado", ex.getMessage());
 	}
 
+	@ExceptionHandler(ConflictoException.class)
+	ProblemDetail conflicto(ConflictoException ex) {
+		return problema(HttpStatus.CONFLICT, "Conflicto", ex.getMessage());
+	}
+
 	@ExceptionHandler(EmailYaRegistradoException.class)
 	ProblemDetail emailYaRegistrado(EmailYaRegistradoException ex) {
 		return problema(HttpStatus.CONFLICT, "Conflicto", ex.getMessage());

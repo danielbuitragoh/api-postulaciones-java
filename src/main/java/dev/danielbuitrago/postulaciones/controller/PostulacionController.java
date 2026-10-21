@@ -60,10 +60,12 @@ public class PostulacionController {
 	@ResponseStatus(HttpStatus.CREATED)
 	@Operation(summary = "Crear una postulación",
 			description = """
-					`empresa` es el nombre: si ya existe se reutiliza, y si no se crea. \
+					Indica la empresa con `empresaId` (una de las tuyas) o con `empresa` (por nombre: se reutiliza \
+					la tuya con ese nombre o se crea), pero no con ambos. \
 					Se crea también el evento `postulada` con la fecha de la postulación.""")
 	@ApiResponse(responseCode = "201", description = "Postulación creada")
 	@ApiResponse(responseCode = "400", description = "Datos no válidos")
+	@ApiResponse(responseCode = "404", description = "El empresaId no existe o no es tuyo")
 	public PostulacionDetalle crear(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody PostulacionPeticion peticion) {
 		return servicio.crear(usuarioId(jwt), peticion);
 	}

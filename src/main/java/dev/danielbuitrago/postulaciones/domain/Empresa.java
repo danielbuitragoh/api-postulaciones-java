@@ -1,5 +1,7 @@
 package dev.danielbuitrago.postulaciones.domain;
 
+import java.time.Instant;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -15,6 +17,9 @@ public class Empresa {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
+	@Column(name = "usuario_id")
+	private Long usuarioId;
+
 	private String nombre;
 
 	@Column(name = "sitio_web")
@@ -22,18 +27,39 @@ public class Empresa {
 
 	private String sector;
 
+	@Column(name = "creado_en")
+	private Instant creadoEn;
+
 	protected Empresa() {
 		// Constructor sin argumentos que exige JPA.
 	}
 
-	public Empresa(String nombre, String sitioWeb, String sector) {
+	public Empresa(Long usuarioId, String nombre, String sitioWeb, String sector) {
+		this.usuarioId = usuarioId;
 		this.nombre = nombre;
 		this.sitioWeb = sitioWeb;
 		this.sector = sector;
+		this.creadoEn = Instant.now();
 	}
 
 	public Long getId() {
 		return id;
+	}
+
+	public String getNombre() {
+		return nombre;
+	}
+
+	public String getSitioWeb() {
+		return sitioWeb;
+	}
+
+	public String getSector() {
+		return sector;
+	}
+
+	public Instant getCreadoEn() {
+		return creadoEn;
 	}
 
 }

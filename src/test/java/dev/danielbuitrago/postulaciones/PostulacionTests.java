@@ -22,7 +22,7 @@ class PostulacionTests extends PruebaApi {
 		String empresa = empresaUnica();
 
 		mockMvc.perform(enviar(yo, "/postulaciones", """
-				{"empresa":"%s","puesto":"Desarrollador Java","fuente":"LinkedIn",
+				{"empresa":{"nombre":"%s"},"puesto":"Desarrollador Java","fuente":"LinkedIn",
 				 "urlOferta":"https://ejemplo.com/oferta/1","salarioMin":24000,"salarioMax":30000,"moneda":"EUR"}
 				""".formatted(empresa)))
 				.andExpect(status().isCreated())
@@ -93,7 +93,7 @@ class PostulacionTests extends PruebaApi {
 	void patchCambiaSoloLosCamposEnviados() throws Exception {
 		Sesion yo = nuevaSesion();
 		long id = crearPostulacionJson(yo, """
-				{"empresa":"%s","puesto":"Junior","fuente":"InfoJobs","salarioMin":20000,"salarioMax":25000,"moneda":"EUR"}
+				{"empresa":{"nombre":"%s"},"puesto":"Junior","fuente":"InfoJobs","salarioMin":20000,"salarioMax":25000,"moneda":"EUR"}
 				""".formatted(empresaUnica()));
 
 		mockMvc.perform(modificar(yo, "/postulaciones/" + id, "{\"puesto\":\"Java Junior\",\"salarioMax\":28000}"))
@@ -107,13 +107,13 @@ class PostulacionTests extends PruebaApi {
 	@Test
 	void unSalarioMinimoMayorQueElMaximoDa400() throws Exception {
 		Sesion yo = nuevaSesion();
-		long id = crearPostulacionJson(yo, "{\"empresa\":\"%s\",\"puesto\":\"X\",\"salarioMin\":20000,\"salarioMax\":25000}"
+		long id = crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"%s\"},\"puesto\":\"X\",\"salarioMin\":20000,\"salarioMax\":25000}"
 				.formatted(empresaUnica()));
 
 		mockMvc.perform(modificar(yo, "/postulaciones/" + id, "{\"salarioMin\":30000}"))
 				.andExpect(status().isBadRequest());
 		mockMvc.perform(enviar(yo, "/postulaciones",
-				"{\"empresa\":\"A\",\"puesto\":\"X\",\"salarioMin\":9,\"salarioMax\":1}"))
+				"{\"empresa\":{\"nombre\":\"A\"},\"puesto\":\"X\",\"salarioMin\":9,\"salarioMax\":1}"))
 				.andExpect(status().isBadRequest());
 	}
 
@@ -136,15 +136,15 @@ class PostulacionTests extends PruebaApi {
 	void laValidacionRechazaDatosNoValidosAntesDeTocarLaBase() throws Exception {
 		Sesion yo = nuevaSesion();
 
-		mockMvc.perform(enviar(yo, "/postulaciones", "{\"empresa\":\"\",\"puesto\":\"\"}"))
+		mockMvc.perform(enviar(yo, "/postulaciones", "{\"empresa\":{\"nombre\":\"\"},\"puesto\":\"\"}"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.errores.empresa").exists())
+				.andExpect(jsonPath("$.errores['empresa.nombre']").exists())
 				.andExpect(jsonPath("$.errores.puesto").exists());
 		mockMvc.perform(enviar(yo, "/postulaciones",
-				"{\"empresa\":\"A\",\"puesto\":\"B\",\"urlOferta\":\"javascript:alert(1)\"}"))
+				"{\"empresa\":{\"nombre\":\"A\"},\"puesto\":\"B\",\"urlOferta\":\"javascript:alert(1)\"}"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errores.urlOferta").exists());
-		mockMvc.perform(enviar(yo, "/postulaciones", "{\"empresa\":\"A\",\"puesto\":\"B\",\"moneda\":\"eur\"}"))
+		mockMvc.perform(enviar(yo, "/postulaciones", "{\"empresa\":{\"nombre\":\"A\"},\"puesto\":\"B\",\"moneda\":\"eur\"}"))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errores.moneda").exists());
 	}
@@ -201,9 +201,9 @@ class PostulacionTests extends PruebaApi {
 	@Test
 	void elOrdenSeEligePorFechaOPorEmpresa() throws Exception {
 		Sesion yo = nuevaSesion();
-		crearPostulacionJson(yo, "{\"empresa\":\"Beta\",\"puesto\":\"B\",\"postuladoEn\":\"2030-01-02T00:00:00Z\"}");
-		crearPostulacionJson(yo, "{\"empresa\":\"Alfa\",\"puesto\":\"A\",\"postuladoEn\":\"2030-01-03T00:00:00Z\"}");
-		crearPostulacionJson(yo, "{\"empresa\":\"Gamma\",\"puesto\":\"G\",\"postuladoEn\":\"2030-01-01T00:00:00Z\"}");
+		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Beta\"},\"puesto\":\"B\",\"postuladoEn\":\"2030-01-02T00:00:00Z\"}");
+		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Alfa\"},\"puesto\":\"A\",\"postuladoEn\":\"2030-01-03T00:00:00Z\"}");
+		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Gamma\"},\"puesto\":\"G\",\"postuladoEn\":\"2030-01-01T00:00:00Z\"}");
 
 		MvcResult reciente = mockMvc.perform(obtener(yo, "/postulaciones")).andReturn();
 		MvcResult antigua = mockMvc.perform(obtener(yo, "/postulaciones?orden=antigua")).andReturn();

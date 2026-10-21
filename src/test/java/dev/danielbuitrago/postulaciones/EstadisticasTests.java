@@ -110,7 +110,7 @@ class EstadisticasTests extends PruebaApi {
 
 	private long postulacionEl(Sesion sesion, String fecha) throws Exception {
 		return crearPostulacionJson(sesion,
-				"{\"empresa\":\"%s\",\"puesto\":\"X\",\"postuladoEn\":\"%s\"}".formatted(empresaUnica(), fecha));
+				"{\"empresa\":{\"nombre\":\"%s\"},\"puesto\":\"X\",\"postuladoEn\":\"%s\"}".formatted(empresaUnica(), fecha));
 	}
 
 }

@@ -70,8 +70,18 @@ abstract class PruebaApi extends PruebaIntegracion {
 
 	// ---------- datos de ejemplo ----------
 
+	long crearEmpresa(Sesion sesion, String nombre) throws Exception {
+		MvcResult resultado = mockMvc.perform(enviar(sesion, "/empresas", "{\"nombre\":\"%s\"}".formatted(nombre)))
+				.andExpect(status().isCreated()).andReturn();
+		return ((Number) JsonPath.read(resultado.getResponse().getContentAsString(), "$.id")).longValue();
+	}
+
+	long crearPostulacionParaEmpresa(Sesion sesion, long empresaId, String puesto) throws Exception {
+		return crearPostulacionJson(sesion, "{\"empresaId\":%d,\"puesto\":\"%s\"}".formatted(empresaId, puesto));
+	}
+
 	long crearPostulacion(Sesion sesion, String empresa, String puesto) throws Exception {
-		return crearPostulacionJson(sesion, "{\"empresa\":\"%s\",\"puesto\":\"%s\"}".formatted(empresa, puesto));
+		return crearPostulacionJson(sesion, "{\"empresa\":{\"nombre\":\"%s\"},\"puesto\":\"%s\"}".formatted(empresa, puesto));
 	}
 
 	long crearPostulacionJson(Sesion sesion, String json) throws Exception {

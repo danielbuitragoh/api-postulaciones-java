@@ -122,7 +122,10 @@ class AutorizacionTests extends PruebaApi {
 				get("/postulaciones/1"),
 				patch("/postulaciones/1").contentType(MediaType.APPLICATION_JSON).content("{}"),
 				delete("/postulaciones/1"),
-				post("/postulaciones/1/eventos").contentType(MediaType.APPLICATION_JSON).content("{}"));
+				post("/postulaciones/1/eventos").contentType(MediaType.APPLICATION_JSON).content("{}"),
+				get("/empresas"),
+				post("/empresas").contentType(MediaType.APPLICATION_JSON).content("{}"),
+				delete("/empresas/1"));
 
 		for (MockHttpServletRequestBuilder peticion : peticiones) {
 			mockMvc.perform(peticion).andExpect(status().isUnauthorized());
@@ -147,6 +150,64 @@ class AutorizacionTests extends PruebaApi {
 		assertThat(duenoDespues).isEqualTo(a.usuarioId());
 		assertThat(empresaDespues).isEqualTo(empresaAntes);
 		mockMvc.perform(obtener(b, "/postulaciones/" + idDeA)).andExpect(status().isNotFound());
+	}
+
+	// ---------- empresas ----------
+
+	@Test
+	void bNoPuedeColgarUnaPostulacionDeLaEmpresaDeA() throws Exception {
+		Sesion a = nuevaSesion();
+		Sesion b = nuevaSesion();
+		long empresaDeA = crearEmpresa(a, empresaUnica());
+
+		mockMvc.perform(enviar(b, "/postulaciones", "{\"empresaId\":%d,\"puesto\":\"Intruso\"}".formatted(empresaDeA)))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(obtener(b, "/postulaciones")).andExpect(jsonPath("$.totalElementos").value(0));
+		mockMvc.perform(obtener(a, "/empresas")).andExpect(jsonPath("$[0].postulaciones").value(0));
+	}
+
+	@Test
+	void bNoPuedeBorrarLaEmpresaDeA() throws Exception {
+		Sesion a = nuevaSesion();
+		Sesion b = nuevaSesion();
+		long empresaDeA = crearEmpresa(a, empresaUnica());
+
+		mockMvc.perform(eliminar(b, "/empresas/" + empresaDeA)).andExpect(status().isNotFound());
+
+		mockMvc.perform(obtener(a, "/empresas")).andExpect(jsonPath("$.length()").value(1));
+	}
+
+	@Test
+	void cadaUsuarioSoloVeSusEmpresas() throws Exception {
+		Sesion a = nuevaSesion();
+		Sesion b = nuevaSesion();
+		crearEmpresa(a, empresaUnica());
+		crearEmpresa(a, empresaUnica());
+		long deB = crearEmpresa(b, empresaUnica());
+
+		mockMvc.perform(obtener(a, "/empresas")).andExpect(jsonPath("$.length()").value(2));
+		mockMvc.perform(obtener(b, "/empresas"))
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].id").value(deB));
+	}
+
+	@Test
+	void postularPorNombreNuncaReutilizaLaEmpresaDeOtroUsuario() throws Exception {
+		Sesion a = nuevaSesion();
+		Sesion b = nuevaSesion();
+		String nombre = empresaUnica();
+		long empresaDeA = crearEmpresa(a, nombre);
+
+		// B postula a una empresa con el mismo nombre: se le crea la suya, no se usa la de A.
+		long postulacionDeB = crearPostulacion(b, nombre, "Backend");
+
+		Long empresaUsada = jdbc.queryForObject("SELECT empresa_id FROM postulaciones WHERE id = ?", Long.class,
+				postulacionDeB);
+		Long duenoDeLaEmpresa = jdbc.queryForObject("SELECT usuario_id FROM empresas WHERE id = ?", Long.class,
+				empresaUsada);
+		assertThat(empresaUsada).isNotEqualTo(empresaDeA);
+		assertThat(duenoDeLaEmpresa).isEqualTo(b.usuarioId());
 	}
 
 	private static List<Long> ids(MvcResult resultado) throws Exception {

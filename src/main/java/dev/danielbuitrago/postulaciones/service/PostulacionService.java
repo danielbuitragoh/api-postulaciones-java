@@ -3,6 +3,7 @@ package dev.danielbuitrago.postulaciones.service;
 import java.time.Instant;
 import java.util.List;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -13,6 +14,7 @@ import dev.danielbuitrago.postulaciones.domain.Empresa;
 import dev.danielbuitrago.postulaciones.domain.Evento;
 import dev.danielbuitrago.postulaciones.domain.Postulacion;
 import dev.danielbuitrago.postulaciones.domain.TipoEvento;
+import dev.danielbuitrago.postulaciones.dto.EmpresaPeticion;
 import dev.danielbuitrago.postulaciones.dto.EventoPeticion;
 import dev.danielbuitrago.postulaciones.dto.EventoRespuesta;
 import dev.danielbuitrago.postulaciones.dto.PaginaRespuesta;
@@ -20,6 +22,7 @@ import dev.danielbuitrago.postulaciones.dto.PostulacionCambios;
 import dev.danielbuitrago.postulaciones.dto.PostulacionDetalle;
 import dev.danielbuitrago.postulaciones.dto.PostulacionPeticion;
 import dev.danielbuitrago.postulaciones.dto.PostulacionRespuesta;
+import dev.danielbuitrago.postulaciones.error.ConflictoException;
 import dev.danielbuitrago.postulaciones.error.PeticionInvalidaException;
 import dev.danielbuitrago.postulaciones.error.RecursoNoEncontradoException;
 import dev.danielbuitrago.postulaciones.repository.EmpresaRepository;
@@ -69,12 +72,10 @@ public class PostulacionService {
 	public PostulacionDetalle crear(Long usuarioId, PostulacionPeticion peticion) {
 		validarSalarios(peticion.salarioMin(), peticion.salarioMax());
 
-		String nombreEmpresa = peticion.empresa().trim();
-		Empresa empresa = empresas.findFirstByNombreIgnoreCase(nombreEmpresa)
-				.orElseGet(() -> empresas.save(new Empresa(nombreEmpresa, peticion.sitioWeb(), peticion.sector())));
+		Long empresaId = resolverEmpresa(usuarioId, peticion);
 		Instant postuladoEn = peticion.postuladoEn() != null ? peticion.postuladoEn() : Instant.now();
 
-		Postulacion nueva = postulaciones.save(new Postulacion(usuarioId, empresa.getId(), peticion.puesto().trim(),
+		Postulacion nueva = postulaciones.save(new Postulacion(usuarioId, empresaId, peticion.puesto().trim(),
 				peticion.fuente(), peticion.urlOferta(), peticion.salarioMin(), peticion.salarioMax(),
 				peticion.moneda(), postuladoEn));
 		// El estado sale del último evento, así que toda postulación nace con su evento "postulada".
@@ -118,6 +119,35 @@ public class PostulacionService {
 		Instant ocurridoEn = peticion.ocurridoEn() != null ? peticion.ocurridoEn() : Instant.now();
 		Evento evento = eventos.save(new Evento(postulacionId, peticion.tipo(), peticion.nota(), ocurridoEn));
 		return EventoRespuesta.de(evento);
+	}
+
+	// La empresa siempre es del usuario: con empresaId se busca con el usuario en el WHERE (una
+	// empresa ajena responde 404, no se puede colgar una postulación de la empresa de otro), y con
+	// el objeto "empresa" se busca o se crea entre las empresas de ese mismo usuario.
+	private Long resolverEmpresa(Long usuarioId, PostulacionPeticion peticion) {
+		if ((peticion.empresaId() != null) == (peticion.empresa() != null)) {
+			throw new PeticionInvalidaException("Indica empresaId o empresa, pero no ambos");
+		}
+		if (peticion.empresaId() != null) {
+			return empresas.findByIdAndUsuarioId(peticion.empresaId(), usuarioId)
+					.orElseThrow(RecursoNoEncontradoException::new).getId();
+		}
+
+		EmpresaPeticion datos = peticion.empresa();
+		String nombre = datos.nombre().trim();
+		return empresas.findByUsuarioIdAndNombreIgnoreCase(usuarioId, nombre)
+				.orElseGet(() -> crearEmpresa(usuarioId, nombre, datos))
+				.getId();
+	}
+
+	private Empresa crearEmpresa(Long usuarioId, String nombre, EmpresaPeticion datos) {
+		try {
+			return empresas.saveAndFlush(new Empresa(usuarioId, nombre, datos.sitioWeb(), datos.sector()));
+		}
+		catch (DataIntegrityViolationException e) {
+			// Dos altas simultáneas de la misma empresa: gana el índice único; el cliente reintenta.
+			throw new ConflictoException("Ya tienes una empresa con ese nombre; vuelve a intentarlo");
+		}
 	}
 
 	// Lista blanca de órdenes: lo que escribe el cliente nunca llega tal cual al ORDER BY.
