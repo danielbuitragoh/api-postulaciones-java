@@ -5,11 +5,13 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -36,6 +38,31 @@ public class GestorDeErrores extends ResponseEntityExceptionHandler {
 		problema.setTitle("Datos no válidos");
 		problema.setProperty("errores", errores);
 		return ResponseEntity.badRequest().body(problema);
+	}
+
+	// Los mensajes por defecto de Spring incluyen nombres de clases y de paquetes; se sustituyen.
+	@Override
+	protected ResponseEntity<Object> handleTypeMismatch(TypeMismatchException ex, HttpHeaders headers,
+			HttpStatusCode status, WebRequest request) {
+		return ResponseEntity.badRequest().body(problema(HttpStatus.BAD_REQUEST, "Datos no válidos",
+				"Un parámetro de la petición tiene un valor no válido"));
+	}
+
+	@Override
+	protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException ex,
+			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		return ResponseEntity.badRequest().body(problema(HttpStatus.BAD_REQUEST, "Datos no válidos",
+				"El cuerpo de la petición no es un JSON válido o contiene valores no permitidos"));
+	}
+
+	@ExceptionHandler(RecursoNoEncontradoException.class)
+	ProblemDetail noEncontrado(RecursoNoEncontradoException ex) {
+		return problema(HttpStatus.NOT_FOUND, "No encontrado", ex.getMessage());
+	}
+
+	@ExceptionHandler(PeticionInvalidaException.class)
+	ProblemDetail peticionInvalida(PeticionInvalidaException ex) {
+		return problema(HttpStatus.BAD_REQUEST, "Datos no válidos", ex.getMessage());
 	}
 
 	@ExceptionHandler(CredencialesInvalidasException.class)
