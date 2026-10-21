@@ -26,7 +26,9 @@ El estado de una postulación **no se sobrescribe**. Cada cambio es una fila en 
 |---|---|---|
 | POST | `/auth/registro`, `/auth/login`, `/auth/refresh` | Cuenta, sesión y rotación del refresh token |
 | GET | `/postulaciones?estado=&empresa=&pagina=&orden=` | Lista paginada (20 por página, la primera es la 0). `orden`: `reciente` (por defecto), `antigua` o `empresa` |
-| POST | `/postulaciones` | Crea una postulación (y su evento `postulada`) |
+| GET, POST | `/empresas` | Mis empresas (con cuántas postulaciones tiene cada una) y alta. El nombre es único por usuario, sin distinguir mayúsculas |
+| DELETE | `/empresas/{id}` | Borra una empresa; `409` si tiene postulaciones |
+| POST | `/postulaciones` | Crea una postulación (y su evento `postulada`). La empresa va como `empresaId` (una de las tuyas) o como `empresa` (objeto con `nombre`: se reutiliza la tuya o se crea), pero no ambos |
 | GET, PATCH, DELETE | `/postulaciones/{id}` | Detalle con eventos, cambios parciales y borrado |
 | POST | `/postulaciones/{id}/eventos` | Añade un evento |
 | GET | `/estadisticas` | Embudo y tiempo hasta la primera respuesta |
@@ -59,25 +61,36 @@ Cada uno de los tres matices tiene una prueba con datos construidos a mano. Comp
 
 ### Cómo sé que las pruebas de autorización sirven
 
-La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé:
+La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé dos veces. Las dos veces, con todo correcto, `./mvnw verify` daba 84 pruebas en verde, y neutralicé el filtro cambiando `usuarioId = :usuarioId` por `(usuarioId = :usuarioId or true)`, que equivale a quitarlo sin tocar las firmas. Al terminar, restauré las consultas con `git checkout` y `./mvnw verify` volvió a dar `BUILD SUCCESS`.
 
-1. Con todo correcto (en ese momento del proyecto), `./mvnw verify` daba 43 pruebas en verde.
-2. Neutralicé a propósito el filtro de usuario en dos consultas de `PostulacionRepository`: `buscarResumen` (detalle) y `borrar`. Cambié `p.usuarioId = :usuarioId` por `(p.usuarioId = :usuarioId or true)`, que equivale a quitarlo sin tocar las firmas.
-3. Resultado real de `./mvnw verify`:
+**Experimento 1: dos consultas de `PostulacionRepository` (`buscarResumen`, el detalle, y `borrar`).** Salida real de `./mvnw verify`:
 
 ```
-[ERROR] Tests run: 9, Failures: 4, Errors: 0, Skipped: 0 -- in AutorizacionTests
+[ERROR] Tests run: 13, Failures: 4, Errors: 0, Skipped: 0 -- in AutorizacionTests
 [ERROR]   AutorizacionTests.bNoPuedeBorrarLaPostulacionDeA:53 Status expected:<404> but was:<204>
 [ERROR]   AutorizacionTests.bNoPuedeVerLaPostulacionDeA:31 Status expected:<404> but was:<200>
-[ERROR]   AutorizacionTests.unPatchNoPuedeCambiarElDuenoNiLaEmpresa:149 Status expected:<404> but was:<200>
+[ERROR]   AutorizacionTests.unPatchNoPuedeCambiarElDuenoNiLaEmpresa:152 Status expected:<404> but was:<200>
 [ERROR]   AutorizacionTests.unRecursoAjenoYUnoInexistenteSonIndistinguibles:109 Status expected:<404> but was:<200>
-[ERROR] Tests run: 43, Failures: 4, Errors: 0, Skipped: 0
+[ERROR] Tests run: 84, Failures: 4, Errors: 0, Skipped: 0
 ```
 
-Se pusieron en rojo 4 pruebas, todas de `AutorizacionTests`, y las otras 39 siguieron en verde. Con `borrar` sin filtro, un usuario llegaba a borrar la postulación de otro (`204` en lugar de `404`). Lo que no se tocó (modificar, añadir eventos, listado y filtros) siguió pasando porque esas consultas conservaban su filtro.
-4. Restauré las dos consultas y `./mvnw verify` volvió a dar `BUILD SUCCESS`.
+Se pusieron en rojo 4 pruebas, todas de `AutorizacionTests`, y las otras 80 siguieron en verde. Con `borrar` sin filtro, un usuario llegaba a borrar la postulación de otro (`204` en lugar de `404`). Lo que no se tocó (modificar, añadir eventos, listado y filtros) siguió pasando porque esas consultas conservaban su filtro. La cuarta prueba (`unPatchNoPuedeCambiarElDuenoNiLaEmpresa`) cae en su última comprobación, que mira que B no pueda ver la postulación de A: es consecuencia del filtro quitado en `buscarResumen`, no un fallo de `PATCH`.
 
-Matiz: la cuarta prueba fallida (`unPatchNoPuedeCambiarElDuenoNiLaEmpresa`) cae en su última comprobación, que mira que B no pueda ver la postulación de A; es una consecuencia del filtro quitado en `buscarResumen`, no un fallo de `PATCH`.
+**Experimento 2: dos consultas de `EmpresaRepository` (`listar` y `borrar`).** Salida real:
+
+```
+[ERROR] Tests run: 13, Failures: 2, Errors: 0, Skipped: 0 -- in AutorizacionTests
+[ERROR] Tests run: 12, Failures: 4, Errors: 0, Skipped: 0 -- in EmpresaTests
+[ERROR]   AutorizacionTests.bNoPuedeBorrarLaEmpresaDeA:176 Status expected:<404> but was:<204>
+[ERROR]   AutorizacionTests.cadaUsuarioSoloVeSusEmpresas:189 JSON path "$.length()" expected:<2> but was:<16>
+[ERROR]   EmpresaTests.elListadoVaPorNombreYCuentaLasPostulaciones:58 JSON path "$.length()" expected:<2> but was:<22>
+[ERROR]   EmpresaTests.postularPorNombreReutilizaLaEmpresaDelUsuarioEnLugarDeDuplicarla:121 JSON path "$.length()" expected:<1> but was:<26>
+[ERROR]   EmpresaTests.unaEmpresaConPostulacionesNoSePuedeBorrarYSeConserva:83 JSON path "$.length()" expected:<1> but was:<25>
+[ERROR]   EmpresaTests.unaEmpresaSinPostulacionesSePuedeBorrar:72 JSON path "$.length()" expected:<0> but was:<26>
+[ERROR] Tests run: 84, Failures: 6, Errors: 0, Skipped: 0
+```
+
+Aquí se pusieron en rojo 6 pruebas y las otras 78 siguieron en verde. Dos son de autorización (`bNoPuedeBorrarLaEmpresaDeA` y `cadaUsuarioSoloVeSusEmpresas`); las otras cuatro son pruebas funcionales de `EmpresaTests` que cuentan el listado de empresas y fallan porque, sin filtro, `GET /empresas` devolvía las empresas de todos los usuarios (16, 22, 25 y 26 filas en lugar de 2, 2, 1 y 0). Es decir, esta vez no fallaron "solo" las de autorización: el filtro quitado afecta también al comportamiento normal del listado.
 
 ## Pruebas
 
@@ -85,7 +98,7 @@ Matiz: la cuarta prueba fallida (`unPatchNoPuedeCambiarElDuenoNiLaEmpresa`) cae 
 ./mvnw verify
 ```
 
-65 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
+84 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
 
 ## Despliegue
 
@@ -104,11 +117,12 @@ Comparado leyendo el código de las dos versiones. Las cifras son líneas no vac
 
 | Tema | Node (TypeScript) | Java (Spring Boot) | Lo que vi al hacerlo |
 |---|---|---|---|
-| Tamaño | 14 archivos, 1.187 líneas (`src`, TS y SQL) | 46 clases, 1.503 líneas (`src/main`) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
-| Pruebas | 43 | 65 | Java incluye 15 de autenticación, 9 de autorización, 6 de cabeceras/CORS y 5 de límite de peticiones |
+| Tamaño | 14 archivos, 1.187 líneas (`src`, TS y SQL) | 51 clases, 1.730 líneas (`src/main`) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
+| Pruebas | 43 | 84 | Java incluye 15 de autenticación, 13 de autorización, 12 de empresas, 6 de cabeceras/CORS y 5 de límite de peticiones |
 | Validación | zod | Bean Validation (anotaciones en los `record`) | Las anotaciones leen bien, pero la comprobación `salarioMin <= salarioMax` cruza dos campos y hubo que hacerla además en el servicio (la base también la tiene como `CHECK`) |
 | Acceso a datos | `pg` con SQL a mano | Spring Data JPA/Hibernate, y SQL a mano con `JdbcClient` para estadísticas | Hibernate con `ddl-auto=validate` detectó al arrancar que `hash_token` es `CHAR(64)` en la base y la entidad esperaba `varchar`. Las agregaciones (CTE, `bool_or`) en JPQL no tenían sentido |
 | Autorización en el `WHERE` | `... where id = $1 and usuario_id = $2` | `findByIdAndUsuarioId` y `@Query` con `usuarioId` | Igual de explícito en las `@Query`; en los métodos derivados el filtro queda escondido en el nombre del método, y por eso dependo más de las pruebas |
+| Crear o reutilizar una empresa | `insert ... on conflict (usuario_id, lower(nombre))` en una sola sentencia | Buscar y, si no está, guardar | En Java no es atómico: si dos altas simultáneas empatan, gana el índice único de la base y la otra recibe un `409` para que reintente |
 | Transacciones | no comparado | `@Transactional` deshace todo si hay excepción | Al detectar un refresh reutilizado hay que revocar y a la vez lanzar un 401: sin `noRollbackFor` la revocación se perdía. Una prueba sin transacción propia lo detecta |
 | JWT | `jsonwebtoken` con `algorithms: ['HS256']` | `NimbusJwtDecoder` con `macAlgorithm(HS256)` | Mismo resultado: la lista de algoritmos es explícita y `alg: none` se rechaza (hay prueba) |
 | Cabeceras, CORS, límite | `helmet`, `cors`, `express-rate-limit` | Cabeceras por defecto de Spring Security, un bean de CORS y un filtro propio con Bucket4j | Spring no trae limitador de peticiones: es un filtro propio de unas 70 líneas más Caffeine para olvidar IPs |
@@ -117,19 +131,22 @@ Comparado leyendo el código de las dos versiones. Las cifras son líneas no vac
 
 ### Diferencias de modelo y de funcionalidad con la versión Node
 
-Esta API **no es una copia exacta** de la de Node. El diseño de Java partió de un esquema más pequeño y hay diferencias que conviene conocer:
+Esta API **no es una copia exacta** de la de Node. Las empresas, que son por usuario y tienen sus endpoints, sí se igualaron. El resto del diseño de Java partió de un esquema más pequeño y hay diferencias que conviene conocer:
 
-- **Empresas:** en Node son por usuario (`usuario_id`, nombre único por usuario) y tienen sus propios endpoints (`GET/POST /empresas`, `DELETE /empresas/{id}`). En Java son **compartidas** entre usuarios, no hay endpoints de empresas (se crean al crear una postulación, reutilizando el nombre) y nada impide duplicados salvo la búsqueda sin distinguir mayúsculas.
 - **Identificadores:** UUID en Node, `BIGINT` autogenerado en Java.
+- **JSON:** los campos van en `snake_case` en Node (`sitio_web`, `url_oferta`) y en `camelCase` en Java (`sitioWeb`, `urlOferta`).
+- **Contraseña mínima:** 12 caracteres en Node, 8 en Java.
+- **Listado de postulaciones:** Node filtra por `estado`, `empresa_id`, `desde` y `hasta` y pagina con `limite` y `desplazamiento`. Java filtra por `estado` y `empresa` (parte del nombre), pagina de 20 en 20 con `pagina` y ordena con `orden`.
+- **Fechas:** `postulado_en` es una fecha (`AAAA-MM-DD`) en Node y un instante con hora en Java.
+- **`PATCH`:** en Node un campo se puede poner a `null` para vaciarlo; en Java no.
 - **Tipos de evento:** Node usa `guardada, postulada, respuesta, entrevista, prueba, oferta, rechazo, retirada`. Java usa `postulada, respuesta, entrevista, oferta, rechazo, seguimiento, cerrada`.
 - **Columnas que Java no tiene:** `usuarios.nombre`, `postulaciones.modalidad`, `ubicacion` y `notas`.
 - **Estadísticas:** Node además devuelve estado por postulación, postulaciones por mes, mediana de días, rechazos en el embudo y tasas de entrevista y oferta. Java devuelve el embudo (postuladas, respondieron, entrevista, oferta) y la media, con los tres matices descritos arriba.
 
 ## Trabajo futuro
 
-- Empresas por usuario y sus endpoints, para igualar el modelo de Node.
+- Igualar con Node lo que aún difiere: tipos de evento, columnas (`nombre`, `modalidad`, `ubicacion`, `notas`), filtros por fecha y `PATCH` que pueda vaciar campos.
 - Mediana de días de respuesta, tasas del embudo y desglose por mes.
-- `PATCH` no permite dejar un campo vacío: un campo ausente significa "no tocar".
 - Los contadores del límite de peticiones están en memoria: con más de una instancia cada una contaría por su cuenta (haría falta Redis o la base de datos).
 - Los refresh tokens caducados o revocados no se borran de la tabla.
 - Sin verificación de email ni recuperación de contraseña.
