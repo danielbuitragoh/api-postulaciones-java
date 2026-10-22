@@ -55,6 +55,17 @@ public class AuthController {
 		return authService.login(peticion.email(), peticion.password());
 	}
 
+	@PostMapping("/logout")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	@Operation(summary = "Cerrar sesión",
+			description = """
+					Revoca el refresh token indicado. Responde 204 aunque el token no exista o ya esté revocado. \
+					Solo cierra esa sesión; el token de acceso ya emitido sigue valiendo hasta que caduque (15 minutos).""")
+	@ApiResponse(responseCode = "204", description = "Sesión cerrada")
+	public void logout(@Valid @RequestBody RefreshPeticion peticion) {
+		authService.cerrarSesion(peticion.refreshToken());
+	}
+
 	@PostMapping("/refresh")
 	@Operation(summary = "Renovar la sesión",
 			description = """

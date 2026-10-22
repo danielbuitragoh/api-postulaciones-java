@@ -9,8 +9,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import javax.crypto.spec.SecretKeySpec;
 
@@ -241,7 +247,97 @@ class AuthTests extends PruebaIntegracion {
 		assertThat(estado).isEqualTo(200);
 	}
 
+	// Un JWT firmado con la clave buena pero sin "exp" valdría para siempre: el validador por defecto
+	// de Spring solo comprueba la caducidad si el token la trae.
+	@Test
+	void unJwtSinCaducidadSeRechaza() throws Exception {
+		JwtClaimsSet claims = JwtClaimsSet.builder().issuer(JwtConfig.EMISOR).subject("1").issuedAt(Instant.now()).build();
+		String token = jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
+				.getTokenValue();
+
+		assertThatThrownBy(() -> jwtDecoder.decode(token)).isInstanceOf(JwtException.class);
+		mockMvc.perform(get("/postulaciones").header("Authorization", "Bearer " + token))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void unJwtConOtroEmisorSeRechaza() throws Exception {
+		JwtClaimsSet claims = JwtClaimsSet.builder().issuer("otro-emisor").subject("1")
+				.issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(600)).build();
+		String token = jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
+				.getTokenValue();
+
+		assertThatThrownBy(() -> jwtDecoder.decode(token)).isInstanceOf(JwtException.class);
+		mockMvc.perform(get("/postulaciones").header("Authorization", "Bearer " + token))
+				.andExpect(status().isUnauthorized());
+	}
+
+	// Dos refresh a la vez con el mismo token: el bloqueo de fila hace que el segundo espere al primero
+	// y lo encuentre ya rotado. Sin él, los dos pasarían por válidos y habría dos sesiones nuevas.
+	@Test
+	void dosRefreshSimultaneosConElMismoTokenSoloUnoGana() throws Exception {
+		String refresh = campo(registrarYEntrar(), "refreshToken");
+		CountDownLatch salida = new CountDownLatch(1);
+		ExecutorService hilos = Executors.newFixedThreadPool(2);
+
+		List<Future<Integer>> intentos = new ArrayList<>();
+		for (int i = 0; i < 2; i++) {
+			intentos.add(hilos.submit(() -> {
+				salida.await();
+				return mockMvc.perform(refresh(refresh)).andReturn().getResponse().getStatus();
+			}));
+		}
+		salida.countDown();
+		List<Integer> estados = new ArrayList<>();
+		for (Future<Integer> intento : intentos) {
+			estados.add(intento.get());
+		}
+		hilos.shutdown();
+
+		assertThat(estados).containsExactlyInAnyOrder(200, 401);
+	}
+
+	// ---------- cierre de sesión ----------
+
+	@Test
+	void elLogoutRevocaElRefreshTokenYDespuesNoSirve() throws Exception {
+		String refresh = campo(registrarYEntrar(), "refreshToken");
+
+		mockMvc.perform(logout(refresh)).andExpect(status().isNoContent());
+
+		assertThat(jdbc.queryForObject("SELECT revocado_en IS NOT NULL FROM refresh_tokens WHERE hash_token = ?",
+				Boolean.class, TokensRefresh.hash(refresh))).isTrue();
+		mockMvc.perform(refresh(refresh)).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void elLogoutNoRevelaSiElTokenExisteYSePuedeRepetir() throws Exception {
+		String refresh = campo(registrarYEntrar(), "refreshToken");
+
+		mockMvc.perform(logout(TokensRefresh.generar())).andExpect(status().isNoContent());
+		mockMvc.perform(logout(refresh)).andExpect(status().isNoContent());
+		mockMvc.perform(logout(refresh)).andExpect(status().isNoContent());
+	}
+
+	@Test
+	void elLogoutSoloCierraEsaSesionNoLasDemasDelUsuario() throws Exception {
+		String email = emailNuevo();
+		mockMvc.perform(registro(email, PASSWORD)).andExpect(status().isCreated());
+		String sesionA = campo(mockMvc.perform(login(email, PASSWORD)).andReturn(), "refreshToken");
+		String sesionB = campo(mockMvc.perform(login(email, PASSWORD)).andReturn(), "refreshToken");
+
+		mockMvc.perform(logout(sesionA)).andExpect(status().isNoContent());
+
+		mockMvc.perform(refresh(sesionB)).andExpect(status().isOk());
+	}
+
 	// ---------- ayudas ----------
+
+	private static MockHttpServletRequestBuilder logout(String token) {
+		return post("/auth/logout").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"refreshToken\":\"%s\"}".formatted(token));
+	}
+
 
 	private String firmar(JwtEncoder encoder, Instant emitidoEn, Instant caducaEn) {
 		JwtClaimsSet claims = JwtClaimsSet.builder()

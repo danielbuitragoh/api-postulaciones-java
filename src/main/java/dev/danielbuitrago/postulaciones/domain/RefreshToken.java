@@ -67,6 +67,11 @@ public class RefreshToken {
 		return !expiraEn.isAfter(ahora);
 	}
 
+	// Cierre de sesión: el token deja de valer sin que lo sustituya otro.
+	public void revocar(Instant ahora) {
+		this.revocadoEn = ahora;
+	}
+
 	public void rotar(Instant ahora, Long idDelSustituto) {
 		this.revocadoEn = ahora;
 		this.reemplazadoPor = idDelSustituto;

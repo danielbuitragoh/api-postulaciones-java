@@ -101,6 +101,16 @@ public class AuthService {
 		return emitirTokens(usuario, actual, ahora);
 	}
 
+	// No dice si el token existía: un token desconocido, caducado o ya revocado responde igual que uno
+	// bueno, así que el endpoint no sirve para averiguar nada. Solo se cierra esa sesión; las demás
+	// del usuario siguen. El JWT de acceso que ya se emitió sigue valiendo hasta que caduque (15 min).
+	@Transactional
+	public void cerrarSesion(String refreshTokenEnClaro) {
+		refreshTokens.buscarParaRotar(TokensRefresh.hash(refreshTokenEnClaro))
+				.filter(token -> !token.estaRevocado())
+				.ifPresent(token -> token.revocar(Instant.now()));
+	}
+
 	private TokensRespuesta emitirTokens(Usuario usuario, RefreshToken anterior, Instant ahora) {
 		String refreshEnClaro = TokensRefresh.generar();
 		RefreshToken nuevo = refreshTokens.save(
