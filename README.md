@@ -4,7 +4,7 @@
 
 API REST para llevar el seguimiento de candidaturas de empleo, con el historial de cada postulación como eventos y estadísticas de respuesta. Es la reescritura en Java 21 y Spring Boot de mi [api-postulaciones](https://github.com/danielbuitragoh/api-postulaciones) (Node), para aprender el stack Java.
 
-- **Demo:** [api-postulaciones-java.onrender.com](https://api-postulaciones-java.onrender.com/salud) · **Documentación interactiva (Swagger UI):** [/docs](https://api-postulaciones-java.onrender.com/docs), o `http://localhost:8080/docs` en local
+- **Demo:** [api-postulaciones-java.onrender.com](https://api-postulaciones-java.onrender.com/) · **Documentación interactiva (Swagger UI):** [/docs](https://api-postulaciones-java.onrender.com/docs), o `http://localhost:8080/docs` en local
 - **Probarla sin instalar nada:** no hace falta una cuenta previa. En `/docs` abre `POST /auth/registro` con cualquier email (ficticio) y una contraseña de 8 caracteres o más, inicia sesión con `POST /auth/login`, pulsa **Authorize** con el `accessToken` y ya puedes crear postulaciones, añadir eventos y ver `/estadisticas`.
 - **Aviso:** la demo corre en el plan gratuito de Render, que duerme el servicio tras unos 15 minutos sin tráfico. Despertarlo tarda: en la única medición que hice (18 minutos sin tráfico), la primera petición no respondió en 150 s y la siguiente tardó 32 s más, unos 3 minutos en total. Si abre lento, espera y recarga; una vez despierta responde en un instante.
 - **Arrancar en local** (necesita Docker): `cp .env.example .env`, rellena `JWT_SECRET` en `.env` y ejecuta:
@@ -27,7 +27,7 @@ El estado de una postulación **no se sobrescribe**. Cada cambio es una fila en 
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| POST | `/auth/registro`, `/auth/login`, `/auth/refresh` | Cuenta, sesión y rotación del refresh token |
+| POST | `/auth/registro`, `/auth/login`, `/auth/refresh`, `/auth/logout` | Cuenta, sesión, rotación del refresh token y cierre de sesión (revoca ese refresh token; el JWT de acceso ya emitido vale hasta que caduque, 15 minutos) |
 | GET | `/postulaciones?estado=&empresa=&pagina=&orden=` | Lista paginada (20 por página, la primera es la 0). `orden`: `reciente` (por defecto), `antigua` o `empresa` |
 | GET, POST | `/empresas` | Mis empresas (con cuántas postulaciones tiene cada una) y alta. El nombre es único por usuario, sin distinguir mayúsculas |
 | DELETE | `/empresas/{id}` | Borra una empresa; `409` si tiene postulaciones |
@@ -37,6 +37,7 @@ El estado de una postulación **no se sobrescribe**. Cada cambio es una fila en 
 | GET | `/estadisticas` | Embudo y tiempo hasta la primera respuesta |
 | GET | `/salud` | Estado del servicio |
 | GET | `/docs` | Swagger UI |
+| GET | `/` | Redirige a `/docs` |
 
 ### Estadísticas: qué cuenta y qué no
 
@@ -52,7 +53,7 @@ Cada uno de los tres matices tiene una prueba con datos construidos a mano. Comp
 | Qué | Cómo |
 |---|---|
 | Contraseñas | Argon2id (19 MiB, 2 iteraciones, 1 hilo). Una prueba lee el hash de la base y comprueba esos parámetros |
-| Sesión | JWT de acceso de 15 min (HS256, algoritmo fijado al verificar) + refresh token opaco de 7 días, guardado como SHA-256 y rotado en cada uso |
+| Sesión | JWT de acceso de 15 min (HS256, algoritmo fijado al verificar; se exigen `exp` y el emisor) + refresh token opaco de 7 días, guardado como SHA-256 y rotado en cada uso |
 | Refresh reutilizado | Si llega uno ya rotado, se revocan todos los tokens del usuario. Una prueba lo comprueba contra la base real |
 | Validación | Bean Validation en todos los DTOs de entrada, antes de tocar la base |
 | SQL | Solo consultas parametrizadas; el `ORDER BY` sale de una lista blanca, nunca del cliente |
@@ -101,7 +102,7 @@ Aquí se pusieron en rojo 6 pruebas y las otras 78 siguieron en verde. Dos son d
 ./mvnw verify
 ```
 
-104 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
+113 pruebas (JUnit 6, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
 
 ## Script auxiliar
 
@@ -160,8 +161,8 @@ Comparado leyendo el código de las dos versiones (la de Node, en su commit `8d2
 
 | Tema | Node (TypeScript) | Java (Spring Boot) | Lo que vi al hacerlo |
 |---|---|---|---|
-| Tamaño | 15 archivos, 1.221 líneas (`src`, TS y SQL) | 58 archivos (54 `.java`), 1.853 líneas (`src/main`, Java y SQL) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
-| Pruebas | 51 (49 declaraciones y un `it.each` de 3 casos) | 104 | Java incluye 15 de autenticación, 13 de autorización, 12 de empresas, 8 de cabeceras, CORS y errores 401, y 17 de límites de peticiones y de saturación de hashes |
+| Tamaño | 15 archivos, 1.221 líneas (`src`, TS y SQL) | 59 archivos (55 `.java`), 1.907 líneas (`src/main`, Java y SQL) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
+| Pruebas | 51 (49 declaraciones y un `it.each` de 3 casos) | 113 | Java incluye 21 de autenticación, 13 de autorización, 12 de empresas, 8 de cabeceras, CORS y errores 401, y 17 de límites de peticiones y de saturación de hashes |
 | Validación | zod | Bean Validation (anotaciones en los `record`) | Las anotaciones leen bien, pero la comprobación `salarioMin <= salarioMax` cruza dos campos y hubo que hacerla además en el servicio (la base también la tiene como `CHECK`) |
 | Acceso a datos | `pg` con SQL a mano | Spring Data JPA/Hibernate, y SQL a mano con `JdbcClient` para estadísticas | Hibernate con `ddl-auto=validate` detectó al arrancar que `hash_token` es `CHAR(64)` en la base y la entidad esperaba `varchar`. Las agregaciones (CTE, `bool_or`) en JPQL no tenían sentido |
 | Autorización en el `WHERE` | `... where id = $1 and usuario_id = $2` | `findByIdAndUsuarioId` y `@Query` con `usuarioId` | Igual de explícito en las `@Query`; en los métodos derivados el filtro queda escondido en el nombre del método, y por eso dependo más de las pruebas |
@@ -178,6 +179,7 @@ Esta API **no es una copia exacta** de la de Node. Las empresas, que son por usu
 
 - **Identificadores:** UUID en Node, `BIGINT` autogenerado en Java.
 - **JSON:** los campos van en `snake_case` en Node (`sitio_web`, `url_oferta`) y en `camelCase` en Java (`sitioWeb`, `urlOferta`).
+- **Rutas de autenticación:** Node tiene `/auth/registro`, `/auth/acceso`, `/auth/refresco`, `/auth/salir` y `/auth/yo` (datos del usuario autenticado). Java tiene `/auth/registro`, `/auth/login`, `/auth/refresh` y `/auth/logout`, y no tiene equivalente de `/auth/yo`. Además, en Node `/auth/salir` exige el token de acceso; en Java `/auth/logout` recibe el refresh token y no pide autenticación.
 - **Contraseña mínima:** 12 caracteres en Node, 8 en Java.
 - **Listado de postulaciones:** Node filtra por `estado`, `empresa_id`, `desde` y `hasta` y pagina con `limite` y `desplazamiento`. Java filtra por `estado` y `empresa` (parte del nombre), pagina de 20 en 20 con `pagina` y ordena con `orden`.
 - **Fechas:** `postulado_en` es una fecha (`AAAA-MM-DD`) en Node y un instante con hora en Java.
@@ -192,12 +194,18 @@ Esta API **no es una copia exacta** de la de Node. Las empresas, que son por usu
 - **Esquema y entidad que no coincidían:** Hibernate, con `ddl-auto=validate`, se negó a arrancar porque `hash_token` era `CHAR(64)` en la base y la entidad esperaba `varchar`. Se corrigió la entidad, no la migración.
 - **Un permiso que solo falla en Linux:** `mvnw` quedó guardado en git sin permiso de ejecución. En Windows no se nota, pero habría roto la CI y el despliegue en Render. Se corrigió en el índice de git, y la CI construye ahora también la imagen Docker.
 - **Pruebas que no probaban nada:** quitando a propósito el filtro de usuario de varias consultas se vio qué pruebas lo detectaban (ver el experimento arriba). En el de las empresas, además, el listado sin filtro devolvía las empresas de todos los usuarios.
+- **Un JWT sin caducidad se aceptaba:** el validador por defecto de Spring solo comprueba `exp` si el token lo trae, así que uno firmado con la clave buena pero sin `exp` valía para siempre. Se descubrió al escribir la prueba y se arregló exigiendo `exp`.
+- **La ruta de login se podía esquivar escribiéndola de otra forma:** el limitador comparaba la ruta tal como llegaba, y `/auth/%6Cogin` caía en el cupo general en vez del estricto. Ahora compara la ruta ya decodificada.
+- **Un evento con fecha futura bloqueaba el estado:** la vista toma el evento con la fecha más reciente, y una entrevista fechada en el futuro se quedaba como estado aunque después llegara un rechazo. Ahora la fecha de un evento (y la de la postulación) no puede ser futura, ni la del evento anterior a la postulación.
+- **Una página enorme daba un 500, y `%` y `_` eran comodines en el filtro de empresa:** `?pagina=2147483647` rompía la consulta y `?empresa=100%` encontraba también "100X". Ahora hay un tope de 10.000 páginas y los comodines se escapan.
 
 ## Trabajo futuro
 
 - Igualar con Node lo que aún difiere: tipos de evento, columnas (`nombre`, `modalidad`, `ubicacion`, `notas`), filtros por fecha y `PATCH` que pueda vaciar campos.
 - Mediana de días de respuesta, tasas del embudo y desglose por mes.
 - Los contadores del límite de peticiones están en memoria: con más de una instancia cada una contaría por su cuenta (haría falta Redis o la base de datos).
+- El límite por IP agrupa por la dirección completa: con IPv6 un cliente puede cambiar de dirección dentro de su prefijo para repartir peticiones entre cupos; habría que agrupar por prefijo. Y la caché guarda como máximo 10.000 IP: pasado ese número, las más antiguas se olvidan y recuperan su cupo.
+- Un `PATCH` sin ningún campo devuelve `200` en lugar de `400`, como hace Node.
 - Los refresh tokens caducados o revocados no se borran de la tabla.
 - Sin verificación de email ni recuperación de contraseña.
 - Sin pruebas de carga ni medición de tiempos del login.
