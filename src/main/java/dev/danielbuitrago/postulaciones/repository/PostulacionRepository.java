@@ -30,7 +30,7 @@ public interface PostulacionRepository extends JpaRepository<Postulacion, Long> 
 			where p.usuarioId = :usuarioId
 			  and (cast(:estado as string) is null or ea.estado = :estado)
 			  and (cast(:empresa as string) is null
-			       or lower(e.nombre) like lower(concat('%', cast(:empresa as string), '%')))
+			       or lower(e.nombre) like lower(concat('%', cast(:empresa as string), '%')) escape '\\')
 			""";
 
 	@Query(value = RESUMEN + FILTROS, countQuery = """

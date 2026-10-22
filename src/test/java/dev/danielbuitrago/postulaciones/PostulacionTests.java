@@ -293,6 +293,35 @@ class PostulacionTests extends PruebaApi {
 		assertThat(empresas(porEmpresa)).containsExactly("Alfa", "Beta", "Gamma");
 	}
 
+	// "%" y "_" son comodines de LIKE: el filtro ?empresa= tiene que tratarlos como letras normales.
+	@Test
+	void losComodinesDeLikeEnElFiltroDeEmpresaSeTratanComoTextoLiteral() throws Exception {
+		Sesion yo = nuevaSesion();
+		crearPostulacion(yo, "100% Java", "A");
+		crearPostulacion(yo, "100X Java", "B");
+		crearPostulacion(yo, "a_b", "C");
+		crearPostulacion(yo, "aXb", "D");
+
+		mockMvc.perform(obtener(yo, "/postulaciones").param("empresa", "100%"))
+				.andExpect(jsonPath("$.totalElementos").value(1))
+				.andExpect(jsonPath("$.contenido[0].empresa").value("100% Java"));
+		mockMvc.perform(obtener(yo, "/postulaciones").param("empresa", "a_b"))
+				.andExpect(jsonPath("$.totalElementos").value(1))
+				.andExpect(jsonPath("$.contenido[0].empresa").value("a_b"));
+		mockMvc.perform(obtener(yo, "/postulaciones").param("empresa", "%"))
+				.andExpect(jsonPath("$.totalElementos").value(1));
+	}
+
+	@Test
+	void unaPaginaEnormeNoDa500ConTopeDa400() throws Exception {
+		Sesion yo = nuevaSesion();
+
+		mockMvc.perform(obtener(yo, "/postulaciones?pagina=2147483647")).andExpect(status().isBadRequest());
+		mockMvc.perform(obtener(yo, "/postulaciones?pagina=99999999999")).andExpect(status().isBadRequest());
+		mockMvc.perform(obtener(yo, "/postulaciones?pagina=10000")).andExpect(status().isOk());
+		mockMvc.perform(obtener(yo, "/postulaciones?pagina=10001")).andExpect(status().isBadRequest());
+	}
+
 	@Test
 	void unOrdenOUnaPaginaNoValidosDan400() throws Exception {
 		Sesion yo = nuevaSesion();

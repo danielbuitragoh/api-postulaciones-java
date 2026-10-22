@@ -34,6 +34,9 @@ public class PostulacionService {
 
 	private static final int TAMANO_PAGINA = 20;
 
+	// Sin tope, una página enorme provocaba un error 500. 10.000 páginas de 20 son 200.000 resultados.
+	private static final int MAX_PAGINA = 10_000;
+
 	private final PostulacionRepository postulaciones;
 	private final EmpresaRepository empresas;
 	private final EventoRepository eventos;
@@ -48,10 +51,10 @@ public class PostulacionService {
 	@Transactional(readOnly = true)
 	public PaginaRespuesta<PostulacionRespuesta> listar(Long usuarioId, TipoEvento estado, String empresa,
 			int pagina, String orden) {
-		if (pagina < 0) {
-			throw new PeticionInvalidaException("La página no puede ser negativa");
+		if (pagina < 0 || pagina > MAX_PAGINA) {
+			throw new PeticionInvalidaException("La página debe estar entre 0 y " + MAX_PAGINA);
 		}
-		String filtroEmpresa = (empresa == null || empresa.isBlank()) ? null : empresa.trim();
+		String filtroEmpresa = (empresa == null || empresa.isBlank()) ? null : escaparComodines(empresa.trim());
 		String filtroEstado = estado == null ? null : estado.name();
 
 		Page<PostulacionRespuesta> resultado = postulaciones.listar(usuarioId, filtroEstado, filtroEmpresa,
@@ -124,6 +127,12 @@ public class PostulacionService {
 		}
 		Evento evento = eventos.save(new Evento(postulacionId, peticion.tipo(), peticion.nota(), ocurridoEn));
 		return EventoRespuesta.de(evento);
+	}
+
+	// "%" y "_" son comodines de LIKE; con "\" como carácter de escape (ver PostulacionRepository) el
+	// usuario busca el texto tal cual, no un patrón.
+	private static String escaparComodines(String texto) {
+		return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}
 
 	// La empresa siempre es del usuario: con empresaId se busca con el usuario en el WHERE (una
