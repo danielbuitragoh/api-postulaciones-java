@@ -6,7 +6,7 @@ API REST para llevar el seguimiento de candidaturas de empleo, con el historial 
 
 - **Demo:** [api-postulaciones-java.onrender.com](https://api-postulaciones-java.onrender.com/salud) · **Documentación interactiva (Swagger UI):** [/docs](https://api-postulaciones-java.onrender.com/docs), o `http://localhost:8080/docs` en local
 - **Probarla sin instalar nada:** no hace falta una cuenta previa. En `/docs` abre `POST /auth/registro` con cualquier email (ficticio) y una contraseña de 8 caracteres o más, inicia sesión con `POST /auth/login`, pulsa **Authorize** con el `accessToken` y ya puedes crear postulaciones, añadir eventos y ver `/estadisticas`.
-- **Aviso:** la demo corre en el plan gratuito de Render, que duerme el servicio tras un rato sin tráfico: la primera petición puede tardar ~40 s.
+- **Aviso:** la demo corre en el plan gratuito de Render, que duerme el servicio tras unos 15 minutos sin tráfico. Despertarlo tarda: en la única medición que hice (18 minutos sin tráfico), la primera petición no respondió en 150 s y la siguiente tardó 32 s más, unos 3 minutos en total. Si abre lento, espera y recarga; una vez despierta responde en un instante.
 - **Arrancar en local** (necesita Docker): `cp .env.example .env`, rellena `JWT_SECRET` en `.env` y ejecuta:
 
 ```bash
@@ -14,6 +14,8 @@ docker compose up --build
 ```
 
 **Stack:** Java 21 · Spring Boot 4.1 · Spring Data JPA · Spring Security · Flyway · PostgreSQL 16 · springdoc-openapi · Bucket4j · Testcontainers · Docker · GitHub Actions
+
+![Swagger UI de la demo desplegada en Render](docs/captura-docs.jpg)
 
 ---
 
