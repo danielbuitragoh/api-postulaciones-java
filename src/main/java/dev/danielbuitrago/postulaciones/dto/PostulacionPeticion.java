@@ -16,7 +16,8 @@ public record PostulacionPeticion(
 		@Schema(description = "Empresa por nombre: se reutiliza la tuya con ese nombre o se crea. Alternativa a 'empresaId'")
 		@Valid EmpresaPeticion empresa,
 		@Schema(example = "Desarrollador Java Junior") @NotBlank @Size(max = 200) String puesto,
-		@Schema(example = "LinkedIn") @Size(max = 100) String fuente,
+		@Schema(example = "LinkedIn") @Size(max = 100)
+		@Pattern(regexp = "(?s).*\\S.*", message = "no puede estar en blanco") String fuente,
 		@Schema(example = "https://ejemplo.com/ofertas/123") @Size(max = 1000) @Pattern(regexp = "^https?://.+", message = "debe empezar por http:// o https://") String urlOferta,
 		@Schema(example = "24000", description = "Bruto anual") @PositiveOrZero Integer salarioMin,
 		@Schema(example = "30000") @PositiveOrZero Integer salarioMax,

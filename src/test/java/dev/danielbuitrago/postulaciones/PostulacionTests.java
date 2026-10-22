@@ -130,6 +130,32 @@ class PostulacionTests extends PruebaApi {
 				.isZero();
 	}
 
+	@Test
+	void unPatchConCadenasEnBlancoDa400YNoCambiaNada() throws Exception {
+		Sesion yo = nuevaSesion();
+		long id = crearPostulacionJson(yo,
+				"{\"empresa\":{\"nombre\":\"%s\"},\"puesto\":\"Original\",\"fuente\":\"InfoJobs\"}".formatted(empresaUnica()));
+
+		for (String cuerpo : new String[] { "{\"puesto\":\" \"}", "{\"puesto\":\"\"}", "{\"fuente\":\"   \"}" }) {
+			mockMvc.perform(modificar(yo, "/postulaciones/" + id, cuerpo))
+					.andExpect(status().isBadRequest());
+		}
+
+		mockMvc.perform(obtener(yo, "/postulaciones/" + id))
+				.andExpect(jsonPath("$.puesto").value("Original"))
+				.andExpect(jsonPath("$.fuente").value("InfoJobs"));
+	}
+
+	@Test
+	void unaFuenteEnBlancoAlCrearDa400() throws Exception {
+		Sesion yo = nuevaSesion();
+
+		mockMvc.perform(enviar(yo, "/postulaciones",
+				"{\"empresa\":{\"nombre\":\"A\"},\"puesto\":\"B\",\"fuente\":\"  \"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errores.fuente").exists());
+	}
+
 	// ---------- validación de entrada ----------
 
 	@Test
