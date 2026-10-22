@@ -16,6 +16,10 @@ import urllib.request
 
 ANCHO_BARRA = 30
 
+# La demo de Render duerme tras un rato sin tráfico y despertarla puede tardar unos 3 minutos,
+# así que se espera algo más que eso antes de rendirse.
+ESPERA_MAXIMA = 240
+
 
 def pedir_estadisticas(url_base, token):
     """Llama a /estadisticas con el token y devuelve el JSON como diccionario."""
@@ -24,14 +28,24 @@ def pedir_estadisticas(url_base, token):
         headers={"Authorization": "Bearer " + token},
     )
     try:
-        with urllib.request.urlopen(peticion, timeout=60) as respuesta:
+        with urllib.request.urlopen(peticion, timeout=ESPERA_MAXIMA) as respuesta:
             return json.load(respuesta)
     except urllib.error.HTTPError as error:
         if error.code == 401:
             salir("El token no es válido o ha caducado (dura 15 minutos). Inicia sesión otra vez.")
         salir("La API respondió con el error " + str(error.code))
+    except TimeoutError:
+        avisar_arranque()
     except urllib.error.URLError as error:
+        # Un timeout al conectar llega envuelto en URLError en lugar de como TimeoutError.
+        if isinstance(error.reason, TimeoutError):
+            avisar_arranque()
         salir("No se pudo conectar con " + url_base + ": " + str(error.reason))
+
+
+def avisar_arranque():
+    salir("La API no respondió a tiempo. Si es la demo de Render, probablemente está arrancando "
+          "(puede tardar unos 3 minutos tras un rato sin uso): espera unos minutos y vuelve a intentarlo.")
 
 
 def porcentaje(parte, total):
