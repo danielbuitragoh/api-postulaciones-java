@@ -64,7 +64,7 @@ Cada uno de los tres matices tiene una prueba con datos construidos a mano. Comp
 
 ### Cómo sé que las pruebas de autorización sirven
 
-La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé dos veces. Las dos veces, con todo correcto, `./mvnw verify` daba 84 pruebas en verde, y neutralicé el filtro cambiando `usuarioId = :usuarioId` por `(usuarioId = :usuarioId or true)`, que equivale a quitarlo sin tocar las firmas. Al terminar, restauré las consultas con `git checkout` y `./mvnw verify` volvió a dar `BUILD SUCCESS`.
+La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé dos veces. Las dos veces, con todo correcto, `./mvnw verify` daba 84 pruebas en verde (las que había entonces; hoy son 104), y neutralicé el filtro cambiando `usuarioId = :usuarioId` por `(usuarioId = :usuarioId or true)`, que equivale a quitarlo sin tocar las firmas. Al terminar, restauré las consultas con `git checkout` y `./mvnw verify` volvió a dar `BUILD SUCCESS`.
 
 **Experimento 1: dos consultas de `PostulacionRepository` (`buscarResumen`, el detalle, y `borrar`).** Salida real de `./mvnw verify`:
 
@@ -101,7 +101,7 @@ Aquí se pusieron en rojo 6 pruebas y las otras 78 siguieron en verde. Dos son d
 ./mvnw verify
 ```
 
-89 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
+104 pruebas (JUnit 5, AssertJ, MockMvc) contra PostgreSQL 16 real con Testcontainers, sin mocks de la base de datos: los fallos de autorización viven en el SQL y un mock los esconde. Necesitan Docker en marcha. El mismo comando corre en GitHub Actions en cada push y pull request.
 
 ## Script auxiliar
 
@@ -156,12 +156,12 @@ Con solo el heap limitado (`-Xmx384m`) y sin límite de contenedor no había `Ou
 
 ## Misma API en Node y en Java: qué cambió
 
-Comparado leyendo el código de las dos versiones. Las cifras son líneas no vacías (incluyen comentarios) y no son del todo comparables: la versión Java tiene además Swagger, CORS y rate limiting propios.
+Comparado leyendo el código de las dos versiones (la de Node, en su commit `8d2b24a` del 8 de octubre de 2026). Las cifras son líneas no vacías (incluyen comentarios) y no son del todo comparables: la versión Java tiene además Swagger, CORS y rate limiting propios.
 
 | Tema | Node (TypeScript) | Java (Spring Boot) | Lo que vi al hacerlo |
 |---|---|---|---|
-| Tamaño | 14 archivos, 1.187 líneas (`src`, TS y SQL) | 51 clases, 1.730 líneas (`src/main`) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
-| Pruebas | 43 | 89 | Java incluye 15 de autenticación, 13 de autorización, 12 de empresas, 8 de cabeceras, CORS y errores 401, y 8 de límite de peticiones |
+| Tamaño | 15 archivos, 1.221 líneas (`src`, TS y SQL) | 58 archivos (54 `.java`), 1.853 líneas (`src/main`, Java y SQL) + 145 del `pom.xml` | Más verboso en Java: una clase por entidad, DTO, excepción y repositorio. Los `record` evitaron Lombok y los getters a mano en los DTO |
+| Pruebas | 51 (49 declaraciones y un `it.each` de 3 casos) | 104 | Java incluye 15 de autenticación, 13 de autorización, 12 de empresas, 8 de cabeceras, CORS y errores 401, y 17 de límites de peticiones y de saturación de hashes |
 | Validación | zod | Bean Validation (anotaciones en los `record`) | Las anotaciones leen bien, pero la comprobación `salarioMin <= salarioMax` cruza dos campos y hubo que hacerla además en el servicio (la base también la tiene como `CHECK`) |
 | Acceso a datos | `pg` con SQL a mano | Spring Data JPA/Hibernate, y SQL a mano con `JdbcClient` para estadísticas | Hibernate con `ddl-auto=validate` detectó al arrancar que `hash_token` es `CHAR(64)` en la base y la entidad esperaba `varchar`. Las agregaciones (CTE, `bool_or`) en JPQL no tenían sentido |
 | Autorización en el `WHERE` | `... where id = $1 and usuario_id = $2` | `findByIdAndUsuarioId` y `@Query` con `usuarioId` | Igual de explícito en las `@Query`; en los métodos derivados el filtro queda escondido en el nombre del método, y por eso dependo más de las pruebas |
@@ -181,7 +181,7 @@ Esta API **no es una copia exacta** de la de Node. Las empresas, que son por usu
 - **Contraseña mínima:** 12 caracteres en Node, 8 en Java.
 - **Listado de postulaciones:** Node filtra por `estado`, `empresa_id`, `desde` y `hasta` y pagina con `limite` y `desplazamiento`. Java filtra por `estado` y `empresa` (parte del nombre), pagina de 20 en 20 con `pagina` y ordena con `orden`.
 - **Fechas:** `postulado_en` es una fecha (`AAAA-MM-DD`) en Node y un instante con hora en Java.
-- **`PATCH`:** en Node un campo se puede poner a `null` para vaciarlo; en Java no.
+- **`PATCH`:** en Node un campo se puede poner a `null` para vaciarlo; en Java no. Un `PATCH` sin ningún campo da `400` en Node ("No enviaste ningún campo que cambiar") y `200` en Java, que devuelve la postulación tal cual.
 - **Tipos de evento:** Node usa `guardada, postulada, respuesta, entrevista, prueba, oferta, rechazo, retirada`. Java usa `postulada, respuesta, entrevista, oferta, rechazo, seguimiento, cerrada`.
 - **Columnas que Java no tiene:** `usuarios.nombre`, `postulaciones.modalidad`, `ubicacion` y `notas`.
 - **Estadísticas:** Node además devuelve estado por postulación, postulaciones por mes, mediana de días, rechazos en el embudo y tasas de entrevista y oferta. Java devuelve el embudo (postuladas, respondieron, entrevista, oferta) y la media, con los tres matices descritos arriba.
