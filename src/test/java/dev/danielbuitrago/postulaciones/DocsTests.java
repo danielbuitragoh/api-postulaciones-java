@@ -47,6 +47,13 @@ class DocsTests extends PruebaIntegracion {
 	}
 
 	@Test
+	void laRaizRedirigeALaDocumentacionEnLugarDeDar401() throws Exception {
+		mockMvc.perform(get("/"))
+				.andExpect(status().is3xxRedirection())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl("/docs"));
+	}
+
+	@Test
 	void swaggerUiSeSirveEnDocsSinToken() throws Exception {
 		// /docs redirige a la página de Swagger UI, que se sirve sin autenticación.
 		mockMvc.perform(get("/docs")).andExpect(status().is3xxRedirection());

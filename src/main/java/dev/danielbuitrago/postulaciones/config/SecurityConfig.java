@@ -3,7 +3,6 @@ package dev.danielbuitrago.postulaciones.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -23,7 +22,7 @@ public class SecurityConfig {
 				.csrf(AbstractHttpConfigurer::disable)
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/salud", "/salud/**").permitAll()
+						.requestMatchers("/", "/salud", "/salud/**").permitAll()
 						.requestMatchers("/auth/**").permitAll()
 						.requestMatchers("/docs", "/docs/**", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
 								.permitAll()
