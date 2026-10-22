@@ -17,6 +17,10 @@ services:
         sync: false
       - key: DB_PASSWORD
         sync: false
+      # Render termina el HTTPS y reenvía la petición por HTTP: con esto la API se entera de que el
+      # original era HTTPS. Solo aquí, donde hay un proxy de confianza (ver application.properties).
+      - key: SERVER_FORWARD_HEADERS_STRATEGY
+        value: native
       # Cabecera con la IP real del cliente para el límite de peticiones. Cloudflare, que va delante
       # de Render, la fija en cada petición. Render no lo documenta, así que hay que verificar contra el
       # despliegue real que un cliente no puede falsearla (ver README).

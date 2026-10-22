@@ -3,10 +3,13 @@ package dev.danielbuitrago.postulaciones;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
@@ -39,6 +42,9 @@ class LimiteDeIpHttpRealTests {
 	@LocalServerPort
 	int puerto;
 
+	@Value("${app.rate-limit.general-por-minuto}")
+	int limiteGeneral;
+
 	// Spring Security y Spring MVC deciden la ruta ya decodificada y normalizada, así que estas
 	// variantes llegan todas al login. El limitador tiene que decidir igual: si compara la ruta
 	// tal como llega, caen en el cubo general (más holgado) y se saltan el límite estricto.
@@ -50,6 +56,23 @@ class LimiteDeIpHttpRealTests {
 		assertThat(loginEn("/auth/%6cogin")).isEqualTo(401);
 
 		assertThat(loginEn("/auth/login")).isEqualTo(429);
+	}
+
+	// Con "native", Tomcat se fía de X-Forwarded-For si la conexión llega de una IP interna, y
+	// 127.0.0.1 lo es. Un cliente podría entonces inventarse una IP distinta en cada petición y
+	// repartirlas entre cubos distintos. Por defecto la API no debe creerse esa cabecera.
+	@Test
+	void unXForwardedForFalsoNoRepartePeticionesEntreCubos() {
+		List<Integer> codigos = new ArrayList<>();
+		for (int i = 0; i < limiteGeneral + 2; i++) {
+			codigos.add(RestClient.create().get()
+					.uri(URI.create("http://localhost:" + puerto + "/postulaciones"))
+					.header("X-Forwarded-For", "203.0.113." + (i + 2))
+					.exchange((peticion, respuesta) -> respuesta.getStatusCode().value()));
+		}
+
+		// Si la cabecera se creyera, cada petición caería en su propio cubo y todas darían 401.
+		assertThat(codigos).contains(429);
 	}
 
 	private int loginEn(String ruta) {

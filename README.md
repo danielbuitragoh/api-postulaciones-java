@@ -122,11 +122,14 @@ API en [Render](https://render.com) (plan gratuito, imagen Docker, ver `render.y
 | `DB_USER`, `DB_PASSWORD` | Usuario y contraseña de la base |
 | `JWT_SECRET` | Secreto de firma, de al menos 32 bytes. Render lo genera solo (`generateValue` en `render.yaml`) |
 | `APP_CORS_ORIGENES` | Opcional: orígenes de navegador permitidos, separados por comas |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | `native` en `render.yaml`: la API se entera de que la petición original era HTTPS (enlaces de Swagger, HSTS). No se activa por defecto |
 | `APP_RATE_LIMIT_CABECERA_IP_REAL` | Cabecera de la que se lee la IP del cliente para el límite de peticiones. En `render.yaml` vale `CF-Connecting-IP`. Vacía en local |
 
 ### La IP del cliente detrás de Render (un fallo real que apareció al desplegar)
 
 Al desplegar, el límite de login **no funcionaba**: 9 intentos seguidos desde la misma IP daban 9 `401` y ningún `429`, mientras que en local y en la CI sí funcionaba. Detrás de Cloudflare y del proxy de Render, la IP que ve la API como origen de la conexión no es la del cliente y cambia entre peticiones, así que cada petición caía en un cubo distinto. Leer `X-Forwarded-For` no es una solución: Render añade entradas a esa cabecera en lugar de reemplazarla, y un cliente puede inventarse las primeras.
+
+Una revisión posterior encontró además que `server.forward-headers-strategy=native` estaba activado por defecto, y con él Tomcat se cree `X-Forwarded-For` cuando la conexión viene de una IP interna (127.0.0.1 o la red de Docker lo son): en local o con `docker compose` un cliente podía repartir sus peticiones entre cubos con una IP inventada. Ahora `native` solo se activa en Render, con la variable `SERVER_FORWARD_HEADERS_STRATEGY` de `render.yaml`, y una prueba con HTTP real (puerto aleatorio) comprueba que, por defecto, un `X-Forwarded-For` falso no sirve para esquivar el límite.
 
 La solución fue leer la IP de `CF-Connecting-IP`, que fija Cloudflare, y hacerlo opcional por configuración. Render no documenta ese comportamiento, así que lo comprobé contra la demo desplegada (cada serie son peticiones a `POST /auth/login` con credenciales falsas, esperando un minuto entre series para que se rellene el cupo):
 
