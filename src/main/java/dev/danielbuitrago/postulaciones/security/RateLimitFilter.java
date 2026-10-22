@@ -44,13 +44,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			.build();
 
 	private final int loginPorMinuto;
+	private final int registroPorMinuto;
 	private final int generalPorMinuto;
 	private final String cabeceraIpReal;
 
 	public RateLimitFilter(@Value("${app.rate-limit.login-por-minuto:5}") int loginPorMinuto,
+			@Value("${app.rate-limit.registro-por-minuto:5}") int registroPorMinuto,
 			@Value("${app.rate-limit.general-por-minuto:100}") int generalPorMinuto,
 			@Value("${app.rate-limit.cabecera-ip-real:}") String cabeceraIpReal) {
 		this.loginPorMinuto = loginPorMinuto;
+		this.registroPorMinuto = registroPorMinuto;
 		this.generalPorMinuto = generalPorMinuto;
 		this.cabeceraIpReal = cabeceraIpReal.trim();
 	}
@@ -64,10 +67,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			return;
 		}
 
-		boolean esLogin = ruta.equals("/auth/login");
-		int limite = esLogin ? loginPorMinuto : generalPorMinuto;
-		String clave = (esLogin ? "login:" : "general:") + ipDelCliente(request);
-		Bucket cubo = cubos.get(clave, k -> nuevoCubo(limite));
+		// Login y registro hacen un hash Argon2id cada uno (19 MiB), así que tienen cupo propio y
+		// estricto; el resto de la API comparte el general.
+		String tramo = switch (ruta) {
+			case "/auth/login" -> "login";
+			case "/auth/registro" -> "registro";
+			default -> "general";
+		};
+		int limite = switch (tramo) {
+			case "login" -> loginPorMinuto;
+			case "registro" -> registroPorMinuto;
+			default -> generalPorMinuto;
+		};
+		Bucket cubo = cubos.get(tramo + ":" + ipDelCliente(request), k -> nuevoCubo(limite));
 
 		ConsumptionProbe sonda = cubo.tryConsumeAndReturnRemaining(1);
 		if (sonda.isConsumed()) {

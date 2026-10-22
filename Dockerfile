@@ -14,5 +14,7 @@ RUN useradd --system --no-create-home api
 COPY --from=build /app/target/*.jar app.jar
 USER api
 EXPOSE 8080
-# El plan gratuito de Render da 512 MB: se limita la memoria de la JVM a un porcentaje de la del contenedor.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+# El plan gratuito de Render da 512 MB. El heap se limita al 50 % de la memoria del contenedor: con
+# el 75 % el heap crecía hasta ~384 MB y, sumada la memoria que usa la JVM fuera del heap, el
+# contenedor superaba los 512 MB y lo mataba el sistema (OOMKilled) bajo carga de hashes Argon2id.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=50", "-jar", "app.jar"]

@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @TestPropertySource(properties = {
 		"app.rate-limit.login-por-minuto=3",
 		"app.rate-limit.general-por-minuto=5",
+		"app.rate-limit.registro-por-minuto=2",
 		"app.rate-limit.cabecera-ip-real=X-Cliente-Real" })
 class RateLimitTests extends PruebaIntegracion {
 
@@ -65,6 +66,33 @@ class RateLimitTests extends PruebaIntegracion {
 		}
 
 		mockMvc.perform(desde(get("/postulaciones"), ip)).andExpect(status().isTooManyRequests());
+	}
+
+	// Cada registro hace un hash Argon2id (19 MiB): sin un límite propio, desde una IP se podrían
+	// encadenar cientos por minuto. El límite de registro es más estricto que el general.
+	@Test
+	void elRegistroTieneUnLimiteEstrictoPropioPorIp() throws Exception {
+		String ip = "203.0.113.60";
+
+		for (int i = 0; i < 2; i++) {
+			mockMvc.perform(desde(registroNuevo(), ip)).andExpect(status().isCreated());
+		}
+
+		mockMvc.perform(desde(registroNuevo(), ip))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(header().exists("Retry-After"));
+	}
+
+	@Test
+	void elLimiteDeRegistroNoAfectaAlLoginNiADeOtraIp() throws Exception {
+		String ip = "203.0.113.70";
+		for (int i = 0; i < 2; i++) {
+			mockMvc.perform(desde(registroNuevo(), ip)).andExpect(status().isCreated());
+		}
+		mockMvc.perform(desde(registroNuevo(), ip)).andExpect(status().isTooManyRequests());
+
+		mockMvc.perform(loginDesde(ip)).andExpect(status().isUnauthorized());
+		mockMvc.perform(desde(registroNuevo(), "203.0.113.71")).andExpect(status().isCreated());
 	}
 
 	// ---------- cabecera con la IP real (detrás de un proxy) ----------
@@ -122,6 +150,12 @@ class RateLimitTests extends PruebaIntegracion {
 	private static MockHttpServletRequestBuilder loginDesde(String ip) {
 		return desde(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"email\":\"nadie@example.com\",\"password\":\"cualquiera-123\"}"), ip);
+	}
+
+	private static MockHttpServletRequestBuilder registroNuevo() {
+		return post("/auth/registro").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"email\":\"rl-%s@example.com\",\"password\":\"una-clave-larga-123\"}"
+						.formatted(java.util.UUID.randomUUID()));
 	}
 
 	private static MockHttpServletRequestBuilder conCabecera(MockHttpServletRequestBuilder peticion, String valor) {

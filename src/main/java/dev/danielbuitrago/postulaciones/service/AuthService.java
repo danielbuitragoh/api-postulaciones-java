@@ -18,6 +18,7 @@ import dev.danielbuitrago.postulaciones.error.RefreshTokenInvalidoException;
 import dev.danielbuitrago.postulaciones.repository.RefreshTokenRepository;
 import dev.danielbuitrago.postulaciones.repository.UsuarioRepository;
 import dev.danielbuitrago.postulaciones.security.JwtService;
+import dev.danielbuitrago.postulaciones.security.LimitadorDeHashes;
 import dev.danielbuitrago.postulaciones.security.TokensRefresh;
 
 @Service
@@ -29,6 +30,7 @@ public class AuthService {
 	private final RefreshTokenRepository refreshTokens;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
+	private final LimitadorDeHashes limitadorDeHashes;
 
 	// Hash de una contraseña que nadie conoce. Cuando el email no existe se compara contra
 	// este hash para que el login tarde lo mismo que con un usuario real y no se pueda
@@ -36,22 +38,28 @@ public class AuthService {
 	private final String hashSenuelo;
 
 	public AuthService(UsuarioRepository usuarios, RefreshTokenRepository refreshTokens,
-			PasswordEncoder passwordEncoder, JwtService jwtService) {
+			PasswordEncoder passwordEncoder, JwtService jwtService, LimitadorDeHashes limitadorDeHashes) {
 		this.usuarios = usuarios;
 		this.refreshTokens = refreshTokens;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
+		this.limitadorDeHashes = limitadorDeHashes;
 		this.hashSenuelo = passwordEncoder.encode(TokensRefresh.generar());
 	}
 
-	@Transactional
+	// registrar y login ya no son @Transactional: el hash Argon2id tarda y reserva 19 MiB, y dentro
+	// de una transacción tendría una conexión de la base retenida todo ese tiempo (y, con el pool
+	// de 10, eso era lo único que limitaba cuántos hashes corrían a la vez). Cada operación de base
+	// de datos (existsByEmail, saveAndFlush, findByEmail, save) ya se ejecuta en su propia
+	// transacción, y aquí no hace falta que sean atómicas entre sí: el índice único decide los empates.
 	public Usuario registrar(String email, String password) {
 		String emailNormalizado = normalizar(email);
 		if (usuarios.existsByEmail(emailNormalizado)) {
 			throw new EmailYaRegistradoException();
 		}
+		String hash = limitadorDeHashes.conPermiso(() -> passwordEncoder.encode(password));
 		try {
-			return usuarios.saveAndFlush(new Usuario(emailNormalizado, passwordEncoder.encode(password)));
+			return usuarios.saveAndFlush(new Usuario(emailNormalizado, hash));
 		}
 		catch (DataIntegrityViolationException e) {
 			// Dos registros simultáneos con el mismo email: gana el índice único de la base.
@@ -59,11 +67,10 @@ public class AuthService {
 		}
 	}
 
-	@Transactional
 	public TokensRespuesta login(String email, String password) {
 		Usuario usuario = usuarios.findByEmail(normalizar(email)).orElse(null);
 		String hash = usuario != null ? usuario.getHashPassword() : hashSenuelo;
-		boolean coincide = passwordEncoder.matches(password, hash);
+		boolean coincide = limitadorDeHashes.conPermiso(() -> passwordEncoder.matches(password, hash));
 		if (usuario == null || !coincide) {
 			throw new CredencialesInvalidasException();
 		}

@@ -75,6 +75,13 @@ public class GestorDeErrores extends ResponseEntityExceptionHandler {
 		return problema(HttpStatus.UNAUTHORIZED, "No autorizado", ex.getMessage());
 	}
 
+	@ExceptionHandler(ServicioSaturadoException.class)
+	ResponseEntity<ProblemDetail> servicioSaturado(ServicioSaturadoException ex) {
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+				.header(HttpHeaders.RETRY_AFTER, "5")
+				.body(problema(HttpStatus.SERVICE_UNAVAILABLE, "Servicio ocupado", ex.getMessage()));
+	}
+
 	@ExceptionHandler(ConflictoException.class)
 	ProblemDetail conflicto(ConflictoException ex) {
 		return problema(HttpStatus.CONFLICT, "Conflicto", ex.getMessage());

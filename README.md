@@ -142,6 +142,18 @@ GET /salud (sin límite):                            200,200,200,200
 
 Cinco intentos y luego `429`, también cuando el cliente falsea `X-Forwarded-For`; y si el cliente manda su propio `CF-Connecting-IP`, Cloudflare rechaza la petición con `403`, así que esa cabecera no se puede falsear desde fuera. Lo que **no he podido comprobar** es que dos clientes con IP distinta tengan cupos separados (necesitaría pedirlo desde dos redes diferentes), y depende de que Render siga delante de Cloudflare: si algún día cambia, habría que volver a verificarlo.
 
+### Memoria en el plan gratuito: un riesgo que medí antes de arreglarlo
+
+Cada hash Argon2id reserva 19 MiB. Para saber si eso era un problema real lo medí con la imagen Docker limitada a 512 MB y 0,5 CPU (el plan gratuito de Render da 512 MB; su CPU es menor y no la he medido), lanzando N registros simultáneos contra un contenedor recién arrancado:
+
+| Versión | Resultado |
+|---|---|
+| Antes (heap al 75 %, sin límite de hashes) | 4 y 8 simultáneos: todos `201`. 12 o más: el contenedor muere (`OOMKilled`, código 137) |
+| Solo con semáforo de 3 hashes | 12: 9 `201` y 3 `503`. 20 o más: sigue muriendo |
+| Semáforo de 3 y heap al 50 % (versión actual) | 12 a 120 simultáneos: sin `OOMKilled`, la API sigue respondiendo; unos 15-18 `201` y el resto `503` con `Retry-After` |
+
+Con solo el heap limitado (`-Xmx384m`) y sin límite de contenedor no había `OutOfMemoryError`; el problema estaba en que el heap al 75 % más la memoria de la JVM fuera del heap sobrepasaba los 512 MB. Por eso hay tres medidas: un semáforo (`app.hash.concurrentes`, 3) que limita los hashes simultáneos y devuelve `503` con `Retry-After` si no hay hueco en 3 s, un límite de 5 registros por minuto y por IP, y el heap de la JVM al 50 % en el `Dockerfile`. `registrar` y `login` dejaron de ser `@Transactional` para no retener una conexión de la base durante el hash. Una medición no es una garantía: `docker stats` marcó 503 MiB de 512 al final de la prueba más dura, así que el margen es estrecho.
+
 ## Misma API en Node y en Java: qué cambió
 
 Comparado leyendo el código de las dos versiones. Las cifras son líneas no vacías (incluyen comentarios) y no son del todo comparables: la versión Java tiene además Swagger, CORS y rate limiting propios.
