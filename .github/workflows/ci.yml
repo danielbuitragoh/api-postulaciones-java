@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# Mínimo privilegio: el workflow solo necesita leer el repositorio.
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -21,7 +25,25 @@ jobs:
       - name: Compilar y ejecutar las pruebas
         run: ./mvnw -B verify
 
+      # Si una prueba falla, el log suele no bastar: se guardan los informes de surefire.
+      - name: Subir los informes de las pruebas si fallan
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: informes-surefire
+          path: target/surefire-reports/
+          if-no-files-found: ignore
+
       # Render despliega construyendo el Dockerfile, no el jar de arriba: se comprueba que esa
       # imagen también se construye (en Linux, con los permisos de git, como en Render).
+      # La caché de capas de GitHub Actions evita descargar Maven y las dependencias cada vez.
+      - uses: docker/setup-buildx-action@v3
+
       - name: Construir la imagen Docker
-        run: docker build -t api-postulaciones-java .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: api-postulaciones-java
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
