@@ -58,7 +58,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 			throws ServletException, IOException {
-		String ruta = request.getRequestURI();
+		String ruta = rutaDecodificada(request);
 		if (SIN_LIMITE.stream().anyMatch(ruta::startsWith)) {
 			chain.doFilter(request, response);
 			return;
@@ -81,6 +81,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
 		response.setContentType("application/problem+json");
 		response.setCharacterEncoding("UTF-8");
 		response.getWriter().write(CUERPO_429);
+	}
+
+	// La ruta que decide Spring, no la que escribió el cliente: el contenedor deja en getServletPath()
+	// la ruta ya decodificada y normalizada ("/auth/%6Cogin" y "/auth/login;x=1" son "/auth/login").
+	// getRequestURI() la devuelve tal cual llegó, y compararla así deja esquivar el límite de login
+	// con solo codificar una letra. getPathInfo() cubre los mapeos donde el resto va ahí (MockMvc).
+	private static String rutaDecodificada(HttpServletRequest request) {
+		String ruta = request.getServletPath();
+		String resto = request.getPathInfo();
+		return resto == null ? ruta : ruta + resto;
 	}
 
 	// Por defecto, la IP de la conexión. Detrás de proxies esa IP es la del proxy y, además, puede
