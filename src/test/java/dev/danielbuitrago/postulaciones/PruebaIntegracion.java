@@ -10,8 +10,9 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 
-// Base común: contexto completo contra PostgreSQL real (Testcontainers). Todas las clases
-// de prueba comparten el mismo contexto, así que el contenedor se arranca una sola vez.
+// Base común: contexto completo contra PostgreSQL real (Testcontainers). Las clases que no cambian
+// ninguna propiedad comparten el mismo contexto (y el mismo contenedor). Las que añaden propiedades
+// con @TestPropertySource (RateLimitTests, HashSaturadoTests) y las de HTTP real arrancan el suyo.
 // Los límites de peticiones se suben a un valor enorme para que las pruebas, que llaman todas
 // desde la misma IP, no choquen con ellos. RateLimitTests los baja para probar el 429.
 @Import(TestcontainersConfiguration.class)
