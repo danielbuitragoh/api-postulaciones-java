@@ -105,4 +105,8 @@ public class Postulacion {
 		return moneda;
 	}
 
+	public Instant getPostuladoEn() {
+		return postuladoEn;
+	}
+
 }

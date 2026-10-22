@@ -50,9 +50,10 @@ class PostulacionTests extends PruebaApi {
 	@Test
 	void elDetalleIncluyeLosEventosEnOrdenCronologico() throws Exception {
 		Sesion yo = nuevaSesion();
-		long id = crearPostulacion(yo, empresaUnica(), "QA");
-		crearEvento(yo, id, "respuesta", "2030-01-02T10:00:00Z");
-		crearEvento(yo, id, "seguimiento", "2030-01-01T10:00:00Z");
+		long id = crearPostulacionJson(yo, conEmpresa("{\"puesto\":\"QA\",\"postuladoEn\":\"2026-01-01T09:00:00Z\"}"));
+		// Se registran en orden inverso al cronológico: el detalle los devuelve por fecha.
+		crearEvento(yo, id, "respuesta", "2026-01-03T10:00:00Z");
+		crearEvento(yo, id, "seguimiento", "2026-01-02T10:00:00Z");
 
 		mockMvc.perform(obtener(yo, "/postulaciones/" + id))
 				.andExpect(status().isOk())
@@ -79,12 +80,13 @@ class PostulacionTests extends PruebaApi {
 	@Test
 	void elEstadoLoDaElEventoMasRecienteEnElTiempoNoElUltimoInsertado() throws Exception {
 		Sesion yo = nuevaSesion();
-		long id = crearPostulacion(yo, empresaUnica(), "Backend");
+		long id = crearPostulacionJson(yo, conEmpresa("{\"puesto\":\"Backend\",\"postuladoEn\":\"2026-01-01T09:00:00Z\"}"));
+		crearEvento(yo, id, "respuesta", "2026-03-01T10:00:00Z");
 
-		// Se registra tarde un evento que ocurrió hace años: no puede ser el estado actual.
-		crearEvento(yo, id, "seguimiento", "2020-01-01T00:00:00Z");
+		// Se registra después, pero ocurrió antes: no puede ser el estado actual.
+		crearEvento(yo, id, "seguimiento", "2026-02-01T10:00:00Z");
 
-		mockMvc.perform(obtener(yo, "/postulaciones/" + id)).andExpect(jsonPath("$.estado").value("postulada"));
+		mockMvc.perform(obtener(yo, "/postulaciones/" + id)).andExpect(jsonPath("$.estado").value("respuesta"));
 	}
 
 	// ---------- modificar y borrar ----------
@@ -128,6 +130,57 @@ class PostulacionTests extends PruebaApi {
 		mockMvc.perform(obtener(yo, "/postulaciones/" + id)).andExpect(status().isNotFound());
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM eventos WHERE postulacion_id = ?", Integer.class, id))
 				.isZero();
+	}
+
+	// ---------- fechas de los eventos ----------
+
+	// Reproduce el bug: la vista estado_actual elige el evento con la fecha más reciente, así que
+	// una "entrevista" fechada en el futuro se quedaba como estado para siempre aunque después
+	// llegara un "rechazo". La fecha de un evento no puede ser futura.
+	@Test
+	void unEventoConFechaFuturaDa400YNoBloqueaElEstado() throws Exception {
+		Sesion yo = nuevaSesion();
+		long id = crearPostulacionJson(yo, conEmpresa("{\"puesto\":\"X\",\"postuladoEn\":\"2026-01-10T09:00:00Z\"}"));
+
+		mockMvc.perform(enviar(yo, "/postulaciones/" + id + "/eventos",
+				"{\"tipo\":\"entrevista\",\"ocurridoEn\":\"2099-01-01T10:00:00Z\"}"))
+				.andExpect(status().isBadRequest());
+		crearEvento(yo, id, "rechazo", null);
+
+		mockMvc.perform(obtener(yo, "/postulaciones/" + id)).andExpect(jsonPath("$.estado").value("rechazo"));
+	}
+
+	@Test
+	void unEventoAnteriorALaPostulacionDa400() throws Exception {
+		Sesion yo = nuevaSesion();
+		long id = crearPostulacionJson(yo, conEmpresa("{\"puesto\":\"X\",\"postuladoEn\":\"2026-01-10T09:00:00Z\"}"));
+
+		mockMvc.perform(enviar(yo, "/postulaciones/" + id + "/eventos",
+				"{\"tipo\":\"respuesta\",\"ocurridoEn\":\"2026-01-09T23:59:59Z\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("anterior")));
+	}
+
+	@Test
+	void unEventoConLaMismaFechaQueLaPostulacionSeAcepta() throws Exception {
+		Sesion yo = nuevaSesion();
+		long id = crearPostulacionJson(yo, conEmpresa("{\"puesto\":\"X\",\"postuladoEn\":\"2026-01-10T09:00:00Z\"}"));
+
+		mockMvc.perform(enviar(yo, "/postulaciones/" + id + "/eventos",
+				"{\"tipo\":\"seguimiento\",\"ocurridoEn\":\"2026-01-10T09:00:00Z\"}"))
+				.andExpect(status().isCreated());
+	}
+
+	// El mismo problema desde el otro lado: el evento "postulada" inicial lleva la fecha de la
+	// postulación, y si fuera futura bloquearía el estado y haría imposible registrar nada más.
+	@Test
+	void unaPostulacionConFechaFuturaDa400() throws Exception {
+		Sesion yo = nuevaSesion();
+
+		mockMvc.perform(enviar(yo, "/postulaciones",
+				conEmpresa("{\"puesto\":\"X\",\"postuladoEn\":\"2099-01-01T09:00:00Z\"}")))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errores.postuladoEn").exists());
 	}
 
 	@Test
@@ -227,9 +280,9 @@ class PostulacionTests extends PruebaApi {
 	@Test
 	void elOrdenSeEligePorFechaOPorEmpresa() throws Exception {
 		Sesion yo = nuevaSesion();
-		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Beta\"},\"puesto\":\"B\",\"postuladoEn\":\"2030-01-02T00:00:00Z\"}");
-		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Alfa\"},\"puesto\":\"A\",\"postuladoEn\":\"2030-01-03T00:00:00Z\"}");
-		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Gamma\"},\"puesto\":\"G\",\"postuladoEn\":\"2030-01-01T00:00:00Z\"}");
+		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Beta\"},\"puesto\":\"B\",\"postuladoEn\":\"2026-01-02T00:00:00Z\"}");
+		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Alfa\"},\"puesto\":\"A\",\"postuladoEn\":\"2026-01-03T00:00:00Z\"}");
+		crearPostulacionJson(yo, "{\"empresa\":{\"nombre\":\"Gamma\"},\"puesto\":\"G\",\"postuladoEn\":\"2026-01-01T00:00:00Z\"}");
 
 		MvcResult reciente = mockMvc.perform(obtener(yo, "/postulaciones")).andReturn();
 		MvcResult antigua = mockMvc.perform(obtener(yo, "/postulaciones?orden=antigua")).andReturn();
@@ -247,6 +300,11 @@ class PostulacionTests extends PruebaApi {
 		mockMvc.perform(obtener(yo, "/postulaciones?orden=password;drop")).andExpect(status().isBadRequest());
 		mockMvc.perform(obtener(yo, "/postulaciones?pagina=-1")).andExpect(status().isBadRequest());
 		mockMvc.perform(obtener(yo, "/postulaciones?estado=inventado")).andExpect(status().isBadRequest());
+	}
+
+	// Completa un JSON de postulación (sin la empresa) con una empresa de nombre único.
+	private static String conEmpresa(String camposSinEmpresa) {
+		return "{\"empresa\":{\"nombre\":\"%s\"},%s".formatted(empresaUnica(), camposSinEmpresa.substring(1));
 	}
 
 	private static List<String> empresas(MvcResult resultado) throws Exception {

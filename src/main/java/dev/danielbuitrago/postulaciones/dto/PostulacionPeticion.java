@@ -4,6 +4,7 @@ import java.time.Instant;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.NotBlank;
@@ -22,5 +23,6 @@ public record PostulacionPeticion(
 		@Schema(example = "24000", description = "Bruto anual") @PositiveOrZero Integer salarioMin,
 		@Schema(example = "30000") @PositiveOrZero Integer salarioMax,
 		@Schema(example = "EUR") @Pattern(regexp = "^[A-Z]{3}$", message = "debe ser un código de 3 letras mayúsculas, como EUR") String moneda,
-		@Schema(example = "2026-10-20T09:00:00Z", description = "Si no se envía, el momento actual") Instant postuladoEn) {
+		@Schema(example = "2026-10-20T09:00:00Z", description = "Si no se envía, el momento actual. No puede ser futura")
+		@PastOrPresent Instant postuladoEn) {
 }

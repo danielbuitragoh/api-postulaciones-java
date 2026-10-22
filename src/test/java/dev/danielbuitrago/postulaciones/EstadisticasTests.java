@@ -26,10 +26,10 @@ class EstadisticasTests extends PruebaApi {
 	@Test
 	void elTiempoDeRespuestaEsHastaLaPrimeraRespuestaNoLaUltima() throws Exception {
 		Sesion yo = nuevaSesion();
-		long id = postulacionEl(yo, "2030-01-01T00:00:00Z");
-		crearEvento(yo, id, "respuesta", "2030-01-03T00:00:00Z");   // +2 días  <- la primera
-		crearEvento(yo, id, "entrevista", "2030-01-11T00:00:00Z");  // +10 días
-		crearEvento(yo, id, "oferta", "2030-01-21T00:00:00Z");      // +20 días
+		long id = postulacionEl(yo, "2026-01-01T00:00:00Z");
+		crearEvento(yo, id, "respuesta", "2026-01-03T00:00:00Z");   // +2 días  <- la primera
+		crearEvento(yo, id, "entrevista", "2026-01-11T00:00:00Z");  // +10 días
+		crearEvento(yo, id, "oferta", "2026-01-21T00:00:00Z");      // +20 días
 
 		mockMvc.perform(obtener(yo, "/estadisticas"))
 				.andExpect(jsonPath("$.tiempoDeRespuesta.mediaDias").value(2.0));
@@ -39,11 +39,11 @@ class EstadisticasTests extends PruebaApi {
 	@Test
 	void lasQueNuncaContestaronNoCuentanComoCeroDias() throws Exception {
 		Sesion yo = nuevaSesion();
-		long tardoCuatro = postulacionEl(yo, "2030-02-01T00:00:00Z");
-		long tardoSeis = postulacionEl(yo, "2030-02-01T00:00:00Z");
-		postulacionEl(yo, "2030-02-01T00:00:00Z"); // nunca contestó
-		crearEvento(yo, tardoCuatro, "respuesta", "2030-02-05T00:00:00Z");
-		crearEvento(yo, tardoSeis, "rechazo", "2030-02-07T00:00:00Z");
+		long tardoCuatro = postulacionEl(yo, "2026-02-01T00:00:00Z");
+		long tardoSeis = postulacionEl(yo, "2026-02-01T00:00:00Z");
+		postulacionEl(yo, "2026-02-01T00:00:00Z"); // nunca contestó
+		crearEvento(yo, tardoCuatro, "respuesta", "2026-02-05T00:00:00Z");
+		crearEvento(yo, tardoSeis, "rechazo", "2026-02-07T00:00:00Z");
 
 		// Media de las dos que respondieron: (4 + 6) / 2 = 5. Si la tercera contara como 0 saldría 3,3.
 		mockMvc.perform(obtener(yo, "/estadisticas"))
@@ -55,9 +55,9 @@ class EstadisticasTests extends PruebaApi {
 	@Test
 	void seguimientoYCerradaLosPoneElUsuarioYNoSonUnaRespuesta() throws Exception {
 		Sesion yo = nuevaSesion();
-		long id = postulacionEl(yo, "2030-03-01T00:00:00Z");
-		crearEvento(yo, id, "seguimiento", "2030-03-05T00:00:00Z");
-		crearEvento(yo, id, "cerrada", "2030-03-10T00:00:00Z");
+		long id = postulacionEl(yo, "2026-03-01T00:00:00Z");
+		crearEvento(yo, id, "seguimiento", "2026-03-05T00:00:00Z");
+		crearEvento(yo, id, "cerrada", "2026-03-10T00:00:00Z");
 
 		mockMvc.perform(obtener(yo, "/estadisticas"))
 				.andExpect(jsonPath("$.tiempoDeRespuesta.conRespuesta").value(0))
@@ -69,12 +69,12 @@ class EstadisticasTests extends PruebaApi {
 	@Test
 	void elEmbudoCuentaLosPasosQueOcurrieronAunqueElEstadoFinalSeaOtro() throws Exception {
 		Sesion yo = nuevaSesion();
-		long entrevistaYRechazo = postulacionEl(yo, "2030-04-01T00:00:00Z");
-		long conOferta = postulacionEl(yo, "2030-04-01T00:00:00Z");
-		postulacionEl(yo, "2030-04-01T00:00:00Z"); // sin movimientos
-		crearEvento(yo, entrevistaYRechazo, "entrevista", "2030-04-05T00:00:00Z");
-		crearEvento(yo, entrevistaYRechazo, "rechazo", "2030-04-10T00:00:00Z");
-		crearEvento(yo, conOferta, "oferta", "2030-04-08T00:00:00Z");
+		long entrevistaYRechazo = postulacionEl(yo, "2026-04-01T00:00:00Z");
+		long conOferta = postulacionEl(yo, "2026-04-01T00:00:00Z");
+		postulacionEl(yo, "2026-04-01T00:00:00Z"); // sin movimientos
+		crearEvento(yo, entrevistaYRechazo, "entrevista", "2026-04-05T00:00:00Z");
+		crearEvento(yo, entrevistaYRechazo, "rechazo", "2026-04-10T00:00:00Z");
+		crearEvento(yo, conOferta, "oferta", "2026-04-08T00:00:00Z");
 
 		// La primera acabó en "rechazo", pero pasó por entrevista y cuenta en ese escalón.
 		mockMvc.perform(obtener(yo, "/postulaciones/" + entrevistaYRechazo))
@@ -91,8 +91,8 @@ class EstadisticasTests extends PruebaApi {
 	void cadaUsuarioSoloVeLasEstadisticasDeSusPostulaciones() throws Exception {
 		Sesion a = nuevaSesion();
 		Sesion b = nuevaSesion();
-		long deA = postulacionEl(a, "2030-05-01T00:00:00Z");
-		crearEvento(a, deA, "entrevista", "2030-05-03T00:00:00Z");
+		long deA = postulacionEl(a, "2026-05-01T00:00:00Z");
+		crearEvento(a, deA, "entrevista", "2026-05-03T00:00:00Z");
 
 		mockMvc.perform(obtener(a, "/estadisticas"))
 				.andExpect(jsonPath("$.embudo.postuladas").value(1))

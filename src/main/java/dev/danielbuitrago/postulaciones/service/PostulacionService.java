@@ -113,10 +113,15 @@ public class PostulacionService {
 
 	@Transactional
 	public EventoRespuesta registrarEvento(Long usuarioId, Long postulacionId, EventoPeticion peticion) {
-		postulaciones.findByIdAndUsuarioId(postulacionId, usuarioId)
+		Postulacion postulacion = postulaciones.findByIdAndUsuarioId(postulacionId, usuarioId)
 				.orElseThrow(RecursoNoEncontradoException::new);
 
 		Instant ocurridoEn = peticion.ocurridoEn() != null ? peticion.ocurridoEn() : Instant.now();
+		// Que no sea futura lo valida el DTO (@PastOrPresent). Aquí se comprueba lo que solo se sabe
+		// con la postulación a mano: un evento no puede ocurrir antes de que exista la postulación.
+		if (ocurridoEn.isBefore(postulacion.getPostuladoEn())) {
+			throw new PeticionInvalidaException("ocurridoEn no puede ser anterior a la fecha de la postulación");
+		}
 		Evento evento = eventos.save(new Evento(postulacionId, peticion.tipo(), peticion.nota(), ocurridoEn));
 		return EventoRespuesta.de(evento);
 	}
