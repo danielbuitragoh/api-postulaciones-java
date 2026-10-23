@@ -65,7 +65,7 @@ Cada uno de los tres matices tiene una prueba con datos construidos a mano. Comp
 
 ### Cómo sé que las pruebas de autorización sirven
 
-La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé dos veces. Las dos veces, con todo correcto, `./mvnw verify` daba 84 pruebas en verde (las que había entonces; hoy son 104), y neutralicé el filtro cambiando `usuarioId = :usuarioId` por `(usuarioId = :usuarioId or true)`, que equivale a quitarlo sin tocar las firmas. Al terminar, restauré las consultas con `git checkout` y `./mvnw verify` volvió a dar `BUILD SUCCESS`.
+La autorización está en el `WHERE` de cada consulta (`usuarioId` va en la propia consulta, no en un `if` posterior), y un recurso ajeno responde 404. Que las pruebas pasen no demuestra nada si no se ponen en rojo cuando falta el filtro, así que lo comprobé dos veces. Las dos veces, con todo correcto, `./mvnw verify` daba 84 pruebas en verde (las que había entonces; hoy son 113), y neutralicé el filtro cambiando `usuarioId = :usuarioId` por `(usuarioId = :usuarioId or true)`, que equivale a quitarlo sin tocar las firmas. Al terminar, restauré las consultas con `git checkout` y `./mvnw verify` volvió a dar `BUILD SUCCESS`.
 
 **Experimento 1: dos consultas de `PostulacionRepository` (`buscarResumen`, el detalle, y `borrar`).** Salida real de `./mvnw verify`:
 
